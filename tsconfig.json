@@ -3,7 +3,10 @@
     "target": "ESNext",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "lib": ["ESNext", "DOM"],
+    "lib": [
+      "ESNext",
+      "DOM"
+    ],
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -12,8 +15,12 @@
     "sourceMap": true,
     "outDir": "./dist",
     "paths": {
-      "@zenith-open/zenithcms-types": ["./packages/types/src/index.ts"],
-      "@zenith-open/zenithcms-*": ["./packages/*/src"]
+      "@zenith-open/zenithcms-types": [
+        "./packages/types/src/index.ts"
+      ],
+      "@zenith-open/zenithcms-*": [
+        "./packages/*/src"
+      ]
     },
     "types": []
   },
@@ -28,5 +35,10 @@
     "server.ts",
     "cms.config.ts"
   ],
-  "exclude": ["node_modules", "**/dist", "**/*.test.ts", "internal"]
+  "exclude": [
+    "node_modules",
+    "**/dist",
+    "**/*.test.ts",
+    "internal"
+  ]
 }

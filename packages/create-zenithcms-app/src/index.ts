@@ -45,7 +45,6 @@ program
       name: path.basename(projectPath), 
       version: "0.1.0", 
       private: true, 
-      type: "module", 
       scripts: { dev: "tsx src/server.ts", build: "tsc", start: "node dist/server.js" }, 
       dependencies: { 
         "@zenith-open/zenithcms-core": "^1.0.0-beta.4", 
@@ -228,7 +227,7 @@ export default config
     fs.writeFileSync(path.join(projectPath, "src/zenith.config.ts"), configTs)
     
     const tsconfig = { 
-      compilerOptions: { target: "ES2022", module: "NodeNext", moduleResolution: "NodeNext", esModuleInterop: true, strict: true, skipLibCheck: true, outDir: "./dist", rootDir: "./src" }, 
+      compilerOptions: { target: "ES2022", module: "CommonJS", moduleResolution: "Node", esModuleInterop: true, strict: true, skipLibCheck: true, outDir: "./dist", rootDir: "./src" }, 
       include: ["src/**/*"] 
     }
     fs.writeFileSync(path.join(projectPath, "tsconfig.json"), JSON.stringify(tsconfig, null, 2))
