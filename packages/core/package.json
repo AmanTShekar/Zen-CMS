@@ -1,10 +1,10 @@
-{
+﻿{
   "name": "@zenith-open/zenithcms-core",
-  "version": "1.0.0-beta",
+  "version": "1.0.0-beta.1",
   "publishConfig": {
     "access": "public"
   },
-  "description": "Zenith CMS — headless engine with REST, GraphQL, and AI tools",
+  "description": "Zenith CMS â€” headless engine with REST, GraphQL, and AI tools",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -118,3 +118,4 @@
     "README.md"
   ]
 }
+
