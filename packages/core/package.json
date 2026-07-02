@@ -1,12 +1,12 @@
-﻿{
+{
   "name": "@zenith-open/zenithcms-core",
   "version": "1.0.0-beta.1",
   "publishConfig": {
     "access": "public"
   },
   "description": "Zenith CMS â€” headless engine with REST, GraphQL, and AI tools",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "dist/packages/core/src/index.js",
+  "types": "dist/packages/core/src/index.d.ts",
   "scripts": {
     "dev": "tsx watch --exclude \"../types/src/generated.ts\" src/server.ts",
     "build": "tsc --project tsconfig.json",
@@ -29,7 +29,7 @@
     "migrate:mongo": "tsx scripts/mongo-migrate.ts"
   },
   "bin": {
-    "zenithcms": "dist/cli/index.js"
+    "zenithcms": "dist/packages/core/src/cli/index.js"
   },
   "dependencies": {
     "@opentelemetry/api": "^1.9.0",

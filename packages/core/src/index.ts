@@ -899,7 +899,7 @@ export class ZenithEngine {
             logger.info(`Initial Super Admin created successfully: ${initialEmail}`)
           }
         } catch (err) {
-          logger.error('Failed to seed initial admin user', err)
+          logger.error({ err }, 'Failed to seed initial admin user')
         }
       }
 
