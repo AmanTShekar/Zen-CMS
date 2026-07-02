@@ -141,11 +141,19 @@ export default config
     clearInterval(spinner)
     process.stdout.write(`\r${chalk.green("✔")} Scaffold Zenith CMS architecture...\n\n`)
 
-    console.log(chalk.cyan("📦 Installing dependencies... This may take a minute."))
+    const installSpinner = setInterval(() => {
+      process.stdout.write(`\r${chalk.cyan(frames[i])} Installing dependencies (this may take a minute)...`)
+      i = (i + 1) % frames.length
+    }, 80)
+
     try {
-      execSync("npm install", { stdio: "inherit", cwd: projectPath })
+      execSync("npm install --no-audit --no-fund --loglevel=error --silent", { stdio: "ignore", cwd: projectPath })
+      clearInterval(installSpinner)
+      process.stdout.write(`\r${chalk.green("✔")} Dependencies installed successfully!                   \n`)
     } catch (e) {
-      console.log(chalk.red("Failed to install dependencies automatically. You can run 'npm install' manually."))
+      clearInterval(installSpinner)
+      process.stdout.write(`\r${chalk.red("✖")} Failed to install dependencies automatically.          \n`)
+      console.log(chalk.red("You can run 'npm install' manually inside the folder."))
     }
 
     console.log("\n" + chalk.bold.green("✨ Project created successfully in " + chalk.cyan(targetDir) + "!\n"))
