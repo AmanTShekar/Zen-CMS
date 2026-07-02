@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env node
+#!/usr/bin/env node
 import { Command } from "commander"
 import chalk from "chalk"
 import path from "path"
@@ -27,22 +27,73 @@ program
     }
     const projectPath = path.resolve(process.cwd(), targetDir)
     if (fs.existsSync(projectPath)) { console.error("Directory exists"); process.exit(1) }
+    
     let adminEmail = "admin@example.com"
     let adminPassword = "password123"
     if (!options.yes) {
       const e = await question("? Admin email: "); if (e) adminEmail = e
       const p = await question("? Admin password: "); if (p) adminPassword = p
     }
+    
     fs.mkdirSync(projectPath, { recursive: true })
-    const pkg = { name: path.basename(projectPath), version: "0.1.0", private: true, type: "module", scripts: { dev: "tsx server.ts" }, dependencies: { "@zenith-open/zenithcms-core": "^1.0.0-beta", "@zenith-open/zenithcms-admin": "^1.0.0-beta", "@zenith-open/zenithcms-types": "^1.0.0-beta", "@zenith-open/zenithcms-db-mongodb": "^1.0.0-beta", tsx: "^4.19.0", typescript: "^5.4.5" } }
+    
+    const pkg = { 
+      name: path.basename(projectPath), 
+      version: "0.1.0", 
+      private: true, 
+      type: "module", 
+      scripts: { dev: "tsx server.ts", build: "tsc", start: "node dist/server.js" }, 
+      dependencies: { 
+        "@zenith-open/zenithcms-core": "^1.0.0-beta.1", 
+        "@zenith-open/zenithcms-admin": "^1.0.0-beta.1", 
+        "@zenith-open/zenithcms-types": "^1.0.0-beta.1", 
+        "@zenith-open/zenithcms-db-mongodb": "^1.0.0-beta.1", 
+        tsx: "^4.19.0", 
+        typescript: "^5.4.5" 
+      } 
+    }
     fs.writeFileSync(path.join(projectPath, "package.json"), JSON.stringify(pkg, null, 2))
+    
+    const serverTs = `import { Zenith } from '@zenith-open/zenithcms-core'
+import config from './zenith.config.js'
+
+const app = new Zenith({ config, port: Number(process.env.PORT) || 3000 })
+await app.start()
+`
+    fs.writeFileSync(path.join(projectPath, "server.ts"), serverTs)
+    
+    const configTs = `import type { CMSConfig } from '@zenith-open/zenithcms-types'
+
+const config: CMSConfig = {
+  collections: [
+    {
+      name: 'Post',
+      slug: 'posts',
+      fields: [
+        { name: 'title', type: 'text', required: true }
+      ]
+    }
+  ]
+}
+
+export default config
+`
+    fs.writeFileSync(path.join(projectPath, "zenith.config.ts"), configTs)
+    
+    const tsconfig = { 
+      compilerOptions: { target: "ES2022", module: "NodeNext", moduleResolution: "NodeNext", esModuleInterop: true, strict: true, skipLibCheck: true, outDir: "./dist" }, 
+      include: ["**/*.ts"] 
+    }
+    fs.writeFileSync(path.join(projectPath, "tsconfig.json"), JSON.stringify(tsconfig, null, 2))
+    
     const rand = () => Math.random().toString(36).substring(2,14)
     fs.writeFileSync(path.join(projectPath, ".env"), ["PORT=3000","JWT_SECRET=z_"+rand(),"COOKIE_SECRET=z_"+rand(),"INITIAL_ADMIN_EMAIL="+adminEmail,"INITIAL_ADMIN_PASSWORD="+adminPassword,"DATABASE_URL=mongodb://localhost:27017/zenith","DATABASE_TYPE=mongodb"].join("\n"))
+    
     fs.writeFileSync(path.join(projectPath, ".gitignore"), "node_modules\ndist\n.env\n*.log\n")
     fs.writeFileSync(path.join(projectPath, "README.md"), "# "+path.basename(projectPath)+"\n\npnpm install && pnpm dev\n\nAdmin: http://localhost:3000/admin\n")
+    
     console.log(chalk.green("  Done: " + targetDir))
     console.log("  cd " + targetDir + " && pnpm install && pnpm dev")
   })
 
 program.parse()
-
