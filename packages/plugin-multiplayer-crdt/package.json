@@ -1,5 +1,5 @@
-{
-  "name": "@zenithcms/plugin-multiplayer-crdt",
+﻿{
+  "name": "@zenith-open/zenithcms-plugin-multiplayer-crdt",
   "version": "1.0.0",
   "description": "Yjs CRDT Real-time Multiplayer Plugin for Zenith CMS",
   "main": "dist/index.js",
@@ -30,3 +30,4 @@
     "README.md"
   ]
 }
+

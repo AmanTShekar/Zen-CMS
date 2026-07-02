@@ -1,4 +1,4 @@
-#!/usr/bin/env tsx
+﻿#!/usr/bin/env tsx
 import { Command } from 'commander'
 import path from 'path'
 import { ZenithEngine } from '../index'
@@ -60,7 +60,7 @@ program
           report.added.forEach((slug) => console.log(`  - ${slug}`))
         }
         if (report.removed.length > 0) {
-          console.log('\n️ Unused collections in Database (not defined in config):')
+          console.log('\nï¸ Unused collections in Database (not defined in config):')
           report.removed.forEach((slug) => console.log(`  - ${slug}`))
         }
       }
@@ -161,7 +161,7 @@ program
         console.log('\nNo backup files found.\n')
       } else {
         console.log(`\nBackups in ${dir}:`)
-        console.log('─'.repeat(70))
+        console.log('â”€'.repeat(70))
         for (const b of backups) {
           const size = (b.size / 1024).toFixed(1)
           console.log(`  ${b.name.padEnd(45)} ${size.padStart(8)} KB  ${b.createdAt.toISOString()}`)
@@ -206,16 +206,16 @@ program
         reportDir: path.resolve(process.cwd(), options.reportDir),
         onProgress: (event) => {
           if (event.type === 'collection_start') {
-            process.stdout.write(`\n  ⟶  ${event.collection}  `)
+            process.stdout.write(`\n  âŸ¶  ${event.collection}  `)
           } else if (event.type === 'collection_progress') {
-            process.stdout.write(`\r  ⟶  ${event.collection}  ${event.processed}/${event.total}  (${event.errors} err)   `)
+            process.stdout.write(`\r  âŸ¶  ${event.collection}  ${event.processed}/${event.total}  (${event.errors} err)   `)
           } else if (event.type === 'collection_done') {
             console.log(`\r    ${event.collection}  ${event.processed}/${event.total}  (${event.errors} errors)`)
           } else if (event.type === 'error') {
             console.error(`\n    ${event.collection}: ${event.message}`)
           } else if (event.type === 'summary') {
             const s = event.summary!
-            console.log('\n────────────────────────────────────')
+            console.log('\nâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€')
             console.log(`  Migration ${s.dryRun ? '(DRY RUN) ' : ''}complete in ${(s.durationMs / 1000).toFixed(1)}s`)
             let totalMigrated = 0, totalErrors = 0
             for (const c of s.collections) {
@@ -224,13 +224,13 @@ program
             }
             console.log(`  Media: ${s.media.migrated}/${s.media.total}  (${s.media.errors} errors)`)
             console.log(`  Total: ${totalMigrated} records, ${totalErrors} errors`)
-            console.log('────────────────────────────────────\n')
+            console.log('â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n')
           }
         },
       })
 
       if (options.dryRun) {
-        console.log('\n DRY RUN — no data will be written to Zenith.\n')
+        console.log('\n DRY RUN â€” no data will be written to Zenith.\n')
       }
       await migrator.run()
       process.exit(0)
@@ -258,10 +258,10 @@ program
         name: 'plugin',
         message: 'Which official plugin would you like to install?',
         choices: [
-          { title: '🛍️  E-Commerce (Stripe)', value: '@zenithcms/plugin-commerce' },
-          { title: '✉️  Email Engine (Resend/SMTP)', value: '@zenithcms/plugin-email' },
-          { title: '🔐  OAuth Providers (Google, GitHub)', value: '@zenithcms/plugin-oauth' },
-          { title: '☁️  Cloudinary Media Storage', value: '@zenithcms/plugin-cloudinary' },
+          { title: 'ðŸ›ï¸  E-Commerce (Stripe)', value: '@zenith-open/zenithcms-plugin-commerce' },
+          { title: 'âœ‰ï¸  Email Engine (Resend/SMTP)', value: '@zenith-open/zenithcms-plugin-email' },
+          { title: 'ðŸ”  OAuth Providers (Google, GitHub)', value: '@zenith-open/zenithcms-plugin-oauth' },
+          { title: 'â˜ï¸  Cloudinary Media Storage', value: '@zenith-open/zenithcms-plugin-cloudinary' },
         ],
       })
 
@@ -270,17 +270,17 @@ program
         process.exit(0)
       }
 
-      console.log(`\n⬇️  Downloading ${response.plugin}...\n`)
+      console.log(`\nâ¬‡ï¸  Downloading ${response.plugin}...\n`)
       
       try {
         // Run pnpm add. We use inherit so the user sees the progress bar.
         execSync(`pnpm add ${response.plugin}`, { stdio: 'inherit', cwd: process.cwd() })
       } catch (e: any) {
-        console.log('\n❌ Failed to install package. (Note: this is expected if the package is not published to NPM yet during development).\n')
+        console.log('\nâŒ Failed to install package. (Note: this is expected if the package is not published to NPM yet during development).\n')
       }
 
       console.log('\n======================================')
-      console.log('✅  Package Downloaded Successfully!')
+      console.log('âœ…  Package Downloaded Successfully!')
       console.log('======================================\n')
       
       console.log('To complete the installation, you need to enable it in your config.')
@@ -288,8 +288,8 @@ program
       
       const variableName = response.plugin.split('-').pop() + 'Plugin'
       
-      console.log('👉 STEP 1: Open your \x1b[36mcms.config.ts\x1b[0m file.')
-      console.log('👉 STEP 2: Copy and paste the following snippet:\n')
+      console.log('ðŸ‘‰ STEP 1: Open your \x1b[36mcms.config.ts\x1b[0m file.')
+      console.log('ðŸ‘‰ STEP 2: Copy and paste the following snippet:\n')
       
       console.log('\x1b[32m' + `import { ${variableName} } from '${response.plugin}'` + '\x1b[0m')
       console.log('')
@@ -302,7 +302,7 @@ program
       console.log('  ]')
       console.log('}\n')
       
-      console.log('👉 STEP 3: Restart your development server.\n')
+      console.log('ðŸ‘‰ STEP 3: Restart your development server.\n')
 
       process.exit(0)
     } catch (err: any) {
@@ -312,3 +312,4 @@ program
   })
 
 program.parse()
+

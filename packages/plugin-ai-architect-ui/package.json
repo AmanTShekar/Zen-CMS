@@ -1,5 +1,5 @@
-{
-  "name": "@zenithcms/plugin-ai-architect-ui",
+﻿{
+  "name": "@zenith-open/zenithcms-plugin-ai-architect-ui",
   "version": "1.0.0",
   "description": "AI Copilot and SEO Architect UI Plugin for Zenith CMS",
   "main": "dist/index.js",
@@ -32,3 +32,4 @@
     "README.md"
   ]
 }
+

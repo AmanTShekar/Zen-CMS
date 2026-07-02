@@ -1,4 +1,4 @@
-/// <reference types="vitest" />
+﻿/// <reference types="vitest" />
 import type { ServerResponse } from 'node:http'
 import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
@@ -105,7 +105,7 @@ export default defineConfig({
             }
             // Isolate all @zenithcms plugin packages into their own chunk
             // so they are only downloaded when a plugin route is accessed
-            if (id.includes('@zenithcms/plugin-') || id.includes('plugin-workflows-ui') || id.includes('plugin-ai-architect-ui') || id.includes('plugin-multiplayer-crdt')) {
+            if (id.includes('@zenith-open/zenithcms-plugin-') || id.includes('plugin-workflows-ui') || id.includes('plugin-ai-architect-ui') || id.includes('plugin-multiplayer-crdt')) {
               return 'vendor-plugins';
             }
             return 'vendor';
@@ -120,3 +120,4 @@ export default defineConfig({
     },
   },
 })
+

@@ -1,4 +1,4 @@
-import { z } from 'zod'
+﻿import { z } from 'zod'
 import { logger } from './logger'
 import { ADMIN_URL } from './auth'
 import { eventHub } from './event-hub'
@@ -15,10 +15,10 @@ export interface EmailOptions {
 
 /**
  * Zenith Email Service (Event Emitter)
- * ─────────────────────
+ * â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
  * The core does NOT handle sending emails directly (to avoid nodemailer bloat).
  * Instead, this service formats emails and emits the 'email:send' event.
- * Official plugins like @zenithcms/plugin-email listen for this event.
+ * Official plugins like @zenith-open/zenithcms-plugin-email listen for this event.
  */
 export class EmailService {
   static async send(options: EmailOptions, overrideSettings?: Record<string, any>, siteId?: string): Promise<void> {
@@ -26,12 +26,12 @@ export class EmailService {
     for (const addr of recipients) {
       const result = recipientSchema.safeParse(addr)
       if (!result.success) {
-        logger.warn({ email: addr }, 'Invalid email recipient — skipping')
+        logger.warn({ email: addr }, 'Invalid email recipient â€” skipping')
         return
       }
     }
 
-    // Emit the event to the system. If the @zenithcms/plugin-email is installed, 
+    // Emit the event to the system. If the @zenith-open/zenithcms-plugin-email is installed, 
     // it will pick this up and send it via SMTP or Resend.
     eventHub.emit('email:send', {
       options,
@@ -41,11 +41,11 @@ export class EmailService {
     
     // In dev mode, we can still print a helpful mock log so developers know an email *would* have sent.
     if (process.env.NODE_ENV !== 'production') {
-      logger.info('─── EMAIL EVENT FIRED (dev mode) ───────────────────')
+      logger.info('â”€â”€â”€ EMAIL EVENT FIRED (dev mode) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€')
       logger.info(`  To:      ${options.to}`)
       logger.info(`  Subject: ${options.subject}`)
       logger.info(`  Body:    ${options.html.replace(/<[^>]+>/g, '').substring(0, 120)}...`)
-      logger.info('────────────────────────────────────────────────────')
+      logger.info('â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€')
     }
   }
 
@@ -87,3 +87,4 @@ export class EmailService {
     }, undefined, siteId)
   }
 }
+

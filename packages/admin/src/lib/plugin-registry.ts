@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Zenith UI Plugin Registry
  *
  * This is the central hub for all UI plugins. A plugin package registers
@@ -59,7 +59,7 @@ class PluginRegistry {
 
   /**
    * Register a UI plugin. Called by plugin packages at module init time.
-   * Safe to call multiple times — duplicate IDs are de-duped with a warning.
+   * Safe to call multiple times â€” duplicate IDs are de-duped with a warning.
    */
   register(plugin: ZenithUIPlugin): void {
     if (this.plugins.has(plugin.id)) {
@@ -68,7 +68,7 @@ class PluginRegistry {
     }
     this.plugins.set(plugin.id, plugin)
     if (import.meta.env.DEV) {
-      console.log(`[ZenithRegistry] ✓ Plugin registered: ${plugin.name} (${plugin.id})`)
+      console.log(`[ZenithRegistry] âœ“ Plugin registered: ${plugin.name} (${plugin.id})`)
     }
   }
 
@@ -110,21 +110,22 @@ class PluginRegistry {
   }
 }
 
-/** Global singleton registry — import this anywhere to register or read plugins */
+/** Global singleton registry â€” import this anywhere to register or read plugins */
 export const pluginRegistry = new PluginRegistry()
 
-// ── Auto-discovery: import known workspace plugins if they are installed ────────
+// â”€â”€ Auto-discovery: import known workspace plugins if they are installed â”€â”€â”€â”€â”€â”€â”€â”€
 // Each plugin self-registers in its own index.ts. We attempt to import them here.
 // If a package is not installed, the dynamic import fails silently.
 const WORKSPACE_PLUGINS = [
-  '@zenithcms/plugin-workflows-ui',
-  '@zenithcms/plugin-ai-architect-ui',
-  '@zenithcms/plugin-multiplayer-crdt',
+  '@zenith-open/zenithcms-plugin-workflows-ui',
+  '@zenith-open/zenithcms-plugin-ai-architect-ui',
+  '@zenith-open/zenithcms-plugin-multiplayer-crdt',
 ]
 
 for (const pkg of WORKSPACE_PLUGINS) {
   import(pkg).catch(() => {
-    // Plugin not installed — this is expected and intentional (Zero-Bloat)
+    // Plugin not installed â€” this is expected and intentional (Zero-Bloat)
     // No noise in production logs
   })
 }
+
