@@ -239,14 +239,28 @@ const SettingsGeneral: React.FC<SettingsGeneralProps> = ({ settings, setSettings
       </div>
 
       {/* Maintenance Mode */}
-      <div className={cn('p-5 border flex items-center justify-between transition-all group', dark ? 'bg-z-panel backdrop-blur-md border-z-border shadow-sm hover:border-red-500/30' : 'bg-[var(--z-bg-input)]/50 border-z-border shadow-sm')}>
+      <div className={cn('p-5 border flex items-center justify-between transition-all group rounded-lg', 
+        settings.maintenanceMode 
+          ? (dark ? 'bg-red-950/20 border-red-900/50 shadow-[0_0_15px_rgba(220,38,38,0.15)]' : 'bg-red-50 border-red-200 shadow-sm')
+          : (dark ? 'bg-z-panel backdrop-blur-md border-z-border shadow-sm' : 'bg-[var(--z-bg-input)]/50 border-z-border shadow-sm')
+      )}>
         <div>
-          <span className={cn('text-sm font-semibold  ', dark ? 'text-z-primary' : 'text-z-primary')}>Maintenance Protocol</span>
-          <p className="text-sm text-z-secondary mt-1">Restrict public access to the system while active. Admins can still log in.</p>
+          <div className="flex items-center gap-2">
+            <span className={cn('text-sm font-bold', settings.maintenanceMode ? 'text-red-500' : (dark ? 'text-z-primary' : 'text-z-primary'))}>
+              Maintenance Protocol
+            </span>
+            {settings.maintenanceMode && (
+              <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-red-500 text-white animate-pulse">Active</span>
+            )}
+          </div>
+          <p className={cn("text-sm mt-1", settings.maintenanceMode ? 'text-red-500/80' : 'text-z-secondary')}>Restrict public access to the system while active. Admins can still log in.</p>
         </div>
         <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
           <input type="checkbox" checked={settings.maintenanceMode} onChange={e => setSettings({ ...settings, maintenanceMode: e.target.checked })} className="sr-only peer" />
-          <div className={cn("w-11 h-6 rounded-none peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-z-panel after:rounded-none after:h-5 after:w-5 after:transition-all border shadow-inner", dark ? 'bg-app/80 peer-checked:bg-red-600 border-z-border' : 'bg-[var(--z-border)] peer-checked:bg-red-500')}></div>
+          <div className={cn(
+            "w-11 h-6 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all shadow-inner", 
+            dark ? 'bg-gray-700 peer-checked:bg-red-600' : 'bg-gray-300 peer-checked:bg-red-500'
+          )}></div>
         </label>
       </div>
 

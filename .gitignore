@@ -114,3 +114,9 @@ compare2.md
 playwright-report/
 packages/admin/playwright-report/
 media/
+.turbo/
+
+
+# Broken plugins hidden from git
+packages/plugin-workflows-ui/
+

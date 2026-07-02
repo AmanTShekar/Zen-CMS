@@ -134,8 +134,10 @@ router.get(
     try {
       const adapter: DatabaseAdapter = (req as import('express').Request & { user?: Record<string, any>, zenith?: Record<string, any> }).zenith?.adapter || AdapterFactory.getActiveAdapter()
       const siteId = req.headers['x-zenith-site-id'] as string
-      if (!siteId) throw new InvalidPayloadError('x-zenith-site-id header is required')
-      const keys = await adapter.find<Record<string, any>>('z_api_keys', { revoked: false, siteId }, { select: ['-key'] })
+      // If siteId is missing but the user is a super admin, we can query all global keys.
+      // If siteId is provided, we filter by siteId.
+      const query = siteId ? { revoked: false, siteId } : { revoked: false }
+      const keys = await adapter.find<Record<string, any>>('z_api_keys', query, { select: ['-key'] })
       res.json(createResponse(keys))
     } catch (err) {
       next(err)

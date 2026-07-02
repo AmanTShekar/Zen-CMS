@@ -23,6 +23,7 @@ import {
 import { cn } from '../lib/utils'
 import { useTheme } from '../context/ThemeContext'
 import { PageHeader } from '../components/ui/PageHeader'
+import { motion, AnimatePresence } from 'framer-motion'
 import api from '../lib/api'
 import { DashboardCard } from './dashboard/DashboardCard'
 import { WidgetErrorBoundary } from './dashboard/WidgetErrorBoundary'
@@ -77,13 +78,14 @@ function timeAgo(ts: string) {
 }
 
 function uptimeStr(seconds: number) {
-  if (!seconds) return '—'
+  if (seconds == null) return '—'
   const d = Math.floor(seconds / 86400)
   const h = Math.floor((seconds % 86400) / 3600)
   const m = Math.floor((seconds % 3600) / 60)
-  if (d > 0) return `${d}d ${h}h`
-  if (h > 0) return `${h}h ${m}m`
-  return `${m}m`
+  const s = Math.floor(seconds % 60)
+  if (d > 0) return `${d}d ${h}h ${m}m`
+  if (h > 0) return `${h}h ${m}m ${s}s`
+  return `${m}m ${s}s`
 }
 
 const ACTION_PALETTE: Record<string, string> = {
@@ -162,7 +164,16 @@ export default function Dashboard() {
   const [mediaCount, setMediaCount] = useState<number | null>(null)
   const [membersOnline, setMembersOnline] = useState<PresenceMember[]>([])
   const [memberCount, setMemberCount] = useState<number | null>(null)
+  const [hoveredUser, setHoveredUser] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+
+  // Make uptime active
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setHealth(prev => prev && prev.uptime != null ? { ...prev, uptime: prev.uptime + 1 } : prev)
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [])
 
   const fetchAll = useCallback(async () => {
     setLoading(true)
@@ -210,7 +221,8 @@ export default function Dashboard() {
           .reduce((a, [, v]) => a + (v as number), 0)
         setTotalRecords(total > 0 ? total.toLocaleString() : '0')
         // member count from counts
-        if (counts['z_users'] != null) setMemberCount(counts['z_users'])
+        if (counts['users'] != null) setMemberCount(counts['users'])
+        else if (counts['z_users'] != null) setMemberCount(counts['z_users'])
         else if (counts['members'] != null) setMemberCount(counts['members'])
       }
 
@@ -230,12 +242,43 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchAll()
-    // Only refresh presence every 30s — everything else is static on page load
-    const presenceInterval = setInterval(() => {
-      api.get('/presence').then(r => setMembersOnline(r.data?.data || [])).catch(() => {})
-    }, 30_000)
-    return () => clearInterval(presenceInterval)
+    // Dynamic ultra-low resource polling (every 3s) for presence and system health
+    const dynamicInterval = setInterval(() => {
+      const t0 = performance.now()
+      api.get('/system/health').then(r => {
+        setLatency(Math.round(performance.now() - t0))
+        setHealth(prev => {
+          const newData = r.data?.data || null
+          // Keep our local ticking uptime if it's ahead or similar to prevent jitter
+          if (prev && newData && newData.uptime) {
+            return { ...newData, uptime: Math.max(prev.uptime, newData.uptime) }
+          }
+          return newData
+        })
+      }).catch(() => {})
+
+      api.get('/presence').then(r => {
+        const data = r.data?.data || []
+        setMembersOnline(data)
+        setMemberCount(prev => prev !== null ? Math.max(prev, data.length) : data.length)
+      }).catch(() => {})
+    }, 3000)
+
+    return () => clearInterval(dynamicInterval)
   }, [fetchAll])
+
+  // Global presence heartbeat so users just looking at the dashboard appear online
+  useEffect(() => {
+    const sendHeartbeat = () => {
+      api.post('/presence/heartbeat', {
+        collection: 'dashboard',
+        documentId: 'dashboard',
+      }).catch(() => {})
+    }
+    sendHeartbeat() // initial
+    const interval = setInterval(sendHeartbeat, 30000)
+    return () => clearInterval(interval)
+  }, [])
 
   const isHealthOk = health?.status === 'ok'
   const isDbOk = health?.database === 'ok'
@@ -300,16 +343,16 @@ export default function Dashboard() {
               icon={Users}
             />
             <StatPill
-              label="API Status"
-              value={health ? (isHealthOk ? 'Operational' : 'Degraded') : '—'}
-              sub={latency != null ? `${latency}ms` : undefined}
+              label="API Latency"
+              value={latency != null ? `${latency}ms` : '—'}
+              sub={health ? (isHealthOk ? 'System Operational' : 'System Degraded') : undefined}
               icon={Radio}
-              accent={!health ? undefined : isHealthOk ? 'emerald' : 'red'}
+              accent={!health ? undefined : latency != null && latency < 300 ? 'emerald' : 'red'}
             />
             <StatPill
               label="Database"
-              value={health ? (isDbOk ? 'Connected' : 'Degraded') : '—'}
-              sub={uptimeStr(health?.uptime ?? 0) !== '—' ? `Up ${uptimeStr(health?.uptime ?? 0)}` : undefined}
+              value={health?.database || (health ? 'Connected' : '—')}
+              sub={isDbOk ? 'Status: Operational' : 'Status: Degraded'}
               icon={Activity}
               accent={!health ? undefined : isDbOk ? 'emerald' : 'red'}
             />
@@ -487,58 +530,91 @@ export default function Dashboard() {
         {/* ── Row 5: Who's online + API health strip ─────────────────────────── */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
 
-          {/* Who's Editing — Google Docs style */}
-          <DashboardCard title="Who's Editing" icon={<Users size={13} />}>
+          {/* Who's Online — Google Docs style */}
+          <DashboardCard title="Who's Online" icon={<Users size={13} />}>
             {membersOnline.length === 0 ? (
               <div className="flex items-center gap-2.5">
-                <div className={cn('w-2 h-2 rounded-full', theme === 'dark' ? 'bg-z-panel/10' : 'bg-[var(--z-border)]')} />
-                <p className="text-sm text-z-secondary">No one else is editing right now.</p>
+                <div className={cn('w-2 h-2 rounded-full', theme === 'dark' ? 'bg-z-border' : 'bg-[var(--z-border)]')} />
+                <p className="text-sm text-z-secondary">No one else is online right now.</p>
               </div>
             ) : (
-              <div className="space-y-2.5">
-                {membersOnline.map((m, i) => {
-                  const email = m.email || m.userId || 'Unknown'
-                  const name = email.split('@')[0]
-                  const initials = name.slice(0, 2).toUpperCase()
-                  const collection = m.collection
-                    ? m.collection.replace(/-/g, ' ')
-                    : null
-                  const avatarColor = m.color || INITIALS_COLORS[i % INITIALS_COLORS.length]
+              <div className="flex items-center gap-4">
+                <div className="flex items-center -space-x-2.5">
+                  {membersOnline.map((m, i) => {
+                    const email = m.email || m.userId || 'Unknown'
+                    const name = email.split('@')[0]
+                    const initials = name.slice(0, 2).toUpperCase()
+                    const collection = m.collection
+                      ? m.collection.replace(/-/g, ' ')
+                      : null
+                    const avatarColor = m.color || INITIALS_COLORS[i % INITIALS_COLORS.length]
+                    const isHex = avatarColor.startsWith('#')
+                    const statusText = collection ? `Editing ${collection}` : 'Browsing'
 
-                  return (
-                    <div key={m.userId || i} className="flex items-center gap-3">
-                      {/* Avatar with live pulse */}
-                      <div className="relative shrink-0">
+                    return (
+                      <div 
+                        key={m.userId || i} 
+                        className="relative group cursor-default"
+                        style={{ zIndex: hoveredUser === (m.userId || String(i)) ? 50 : membersOnline.length - i }}
+                        onMouseEnter={() => setHoveredUser(m.userId || String(i))}
+                        onMouseLeave={() => setHoveredUser(null)}
+                      >
+                        {/* Avatar circle with user color border */}
                         <div
-                          className="w-7 h-7 flex items-center justify-center text-z-primary text-sm font-semibold"
-                          style={{ backgroundColor: avatarColor }}
-                          title={email}
+                          className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold transition-transform group-hover:-translate-y-1 group-hover:scale-110"
+                          style={{
+                            backgroundColor: isHex ? avatarColor : undefined,
+                            boxShadow: isHex
+                              ? `0 0 0 3px ${avatarColor}55, 0 0 0 5px ${theme === 'dark' ? '#18181b' : '#fff'}`
+                              : `0 0 0 3px var(--z-accent), 0 0 0 5px ${theme === 'dark' ? '#18181b' : '#fff'}`,
+                          }}
                         >
-                          {initials}
+                          <span className={cn(!isHex && avatarColor)}>{initials}</span>
                         </div>
-                        <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-z-accent rounded-full border-2 border-z-border" />
+                        {/* Pulsing active dot with user color */}
+                        <span 
+                          className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 animate-pulse"
+                          style={{
+                            backgroundColor: isHex ? avatarColor : 'var(--z-accent)',
+                            borderColor: theme === 'dark' ? '#18181b' : '#fff',
+                          }}
+                        />
+                        {/* Framer Motion tooltip */}
+                        <AnimatePresence>
+                          {hoveredUser === (m.userId || String(i)) && (
+                            <motion.div 
+                              initial={{ opacity: 0, y: 5, scale: 0.95 }}
+                              animate={{ opacity: 1, y: 0, scale: 1 }}
+                              exit={{ opacity: 0, y: 5, scale: 0.95 }}
+                              transition={{ duration: 0.12 }}
+                              className="absolute top-full mt-3 left-1/2 -translate-x-1/2 z-[999] whitespace-nowrap pointer-events-none"
+                            >
+                              <div className={cn(
+                                "px-3 py-2 rounded-xl shadow-2xl text-xs font-medium flex items-center gap-2",
+                                theme === 'dark' ? 'bg-[#18181b] text-z-primary border border-z-border shadow-black/60' : 'bg-white text-z-primary border shadow-lg'
+                              )}>
+                                <div 
+                                  className="w-2.5 h-2.5 rounded-full shrink-0 animate-pulse"
+                                  style={{ backgroundColor: isHex ? avatarColor : 'var(--z-accent)' }}
+                                />
+                                <span className="font-semibold">{name}</span>
+                                <span className="text-z-muted font-normal border-l border-z-border pl-2">{statusText}</span>
+                              </div>
+                              {/* Arrow */}
+                              <div className={cn(
+                                "absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 rotate-45",
+                                theme === 'dark' ? 'bg-[#18181b] border-l border-t border-z-border' : 'bg-white border-l border-t border-gray-200'
+                              )} />
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
                       </div>
-                      {/* Info */}
-                      <div className="flex-1 min-w-0">
-                        <p className={cn('text-sm font-bold truncate', theme === 'dark' ? 'text-z-primary' : 'text-z-primary')}>
-                          {name}
-                        </p>
-                        {collection ? (
-                          <p className="text-sm text-z-secondary truncate">
-                            Editing <span className="capitalize font-medium text-z-muted">{collection}</span>
-                          </p>
-                        ) : (
-                          <p className="text-sm text-z-secondary">Browsing the CMS</p>
-                        )}
-                      </div>
-                      {/* Live indicator */}
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <span className="w-1.5 h-1.5 rounded-full bg-z-accent animate-pulse" />
-                        <span className="text-sm text-z-secondary">Live</span>
-                      </div>
-                    </div>
-                  )
-                })}
+                    )
+                  })}
+                </div>
+                <span className="text-sm text-z-secondary font-medium">
+                  {membersOnline.length} {membersOnline.length === 1 ? 'person' : 'people'} online
+                </span>
               </div>
             )}
           </DashboardCard>

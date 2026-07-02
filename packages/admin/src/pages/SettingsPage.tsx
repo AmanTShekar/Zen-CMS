@@ -152,17 +152,19 @@ const SettingsPage = () => {
  const [roles, setRoles] = useState<Role[]>([])
  const [editingRole, setEditingRole] = useState<Role | null>(null)
  const [roleFilter, setRoleFilter] = useState<'all' | 'system' | 'custom'>('all')
+ const [plugins, setPlugins] = useState<any[]>([])
 
  const fetchData = useCallback(async () => {
  setLoading(true)
  try {
- const [settingsRes, dbRes, usersRes, keysRes, healthRes, rolesRes] = await Promise.all([
+ const [settingsRes, dbRes, usersRes, keysRes, healthRes, rolesRes, pluginsRes] = await Promise.all([
  api.get('/system/settings'),
  api.get('/system/db/stats'),
  api.get('/system/users'),
  api.get('/system/api-keys'),
  api.get('/system/health'),
  api.get('/roles').catch(() => ({ data: { data: [] } })),
+ api.get('/system/plugins').catch(() => ({ data: { data: [] } }))
  ])
  setSettings(settingsRes.data.data)
  setDbStats(dbRes.data.data)
@@ -170,6 +172,7 @@ const SettingsPage = () => {
  setApiKeys(keysRes.data.data)
  setHealthData(healthRes.data.data)
  setRoles(rolesRes.data?.data || [])
+ setPlugins(pluginsRes.data?.data || [])
 
  if (activeSiteId) {
  try {
@@ -249,9 +252,15 @@ const SettingsPage = () => {
    { id: 'security', label: 'Security Policies', icon: Shield, sub: 'Access Control', adminOnly: true },
    { id: 'api-explorer', label: 'API Explorer', icon: Terminal, sub: 'GraphQL & REST' },
    { id: 'database', label: 'Database', icon: Database, sub: 'Storage Stats', adminOnly: true },
-   { id: 'notifications', label: 'Email Relay', icon: Mail, sub: 'Email Delivery', adminOnly: true },
-   { id: 'webhooks', label: 'Webhooks', icon: Webhook, sub: 'HTTP Callbacks', adminOnly: true },
-   { id: 'webhook-logs', label: 'Event Logs', icon: Webhook, sub: 'Webhook History', adminOnly: true },
+   ...(plugins.some(p => p.id.includes('email') || p.id.includes('smtp') || p.name.toLowerCase().includes('email'))
+     ? [{ id: 'notifications', label: 'Email Relay', icon: Mail, sub: 'Email Delivery', adminOnly: true }]
+     : []),
+   ...(plugins.some(p => p.id.includes('webhook') || p.name.toLowerCase().includes('webhook'))
+     ? [
+         { id: 'webhooks', label: 'Webhooks', icon: Webhook, sub: 'HTTP Callbacks', adminOnly: true },
+         { id: 'webhook-logs', label: 'Event Logs', icon: Webhook, sub: 'Webhook History', adminOnly: true }
+       ]
+     : []),
    { id: 'plugins', label: 'Plugins', icon: Puzzle, sub: 'Extensions', adminOnly: true },
    { id: 'system', label: 'System Ops', icon: SettingsIcon, sub: 'Restart & Maintenance', adminOnly: true },
    ]
@@ -317,17 +326,17 @@ const SettingsPage = () => {
    icon={<SettingsIcon size={24} />}
    backLink={{ to: '/', label: 'Dashboard' }}
    actions={
-     <button
-       onClick={handleSave}
-       disabled={saving}
-       className={cn(
-         'flex items-center justify-center gap-2 px-6 py-2.5 rounded-none text-sm font-bold transition-all disabled:opacity-50',
-         theme === 'dark' ? 'bg-z-accent hover:brightness-110 text-z-logo-text shadow-sm' : 'bg-z-accent text-z-logo-text hover:opacity-90'
-       )}
-     >
-       {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-       Commit Config
-     </button>
+      <button
+        onClick={handleSave}
+        disabled={saving}
+        className={cn(
+          'flex items-center justify-center gap-2 px-6 py-2.5 rounded-lg text-sm font-semibold transition-all shadow-sm hover:scale-105 active:scale-95 disabled:opacity-50 disabled:hover:scale-100',
+          theme === 'dark' ? 'bg-emerald-500 hover:bg-emerald-400 text-black' : 'bg-emerald-500 text-white hover:bg-emerald-600'
+        )}
+      >
+        {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+        Save Changes
+      </button>
    }
  />
 

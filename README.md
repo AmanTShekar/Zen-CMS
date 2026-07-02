@@ -1,70 +1,136 @@
 <div align="center">
   <img src="https://raw.githubusercontent.com/AmanTShekar/Zenith-CMS/main/logo.png" width="200" alt="Zenith CMS Logo" />
   <h1>Zenith CMS</h1>
-  <p><strong>A powerful, easy-to-use content management system for modern websites.</strong></p>
+  <p><strong>The Industrial Operational Platform for High-Fidelity Digital Ecosystems.</strong></p>
+  
   <p align="center">
-    <a href="https://github.com/AmanTShekar/Zenith-CMS"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.0--beta-black?style=flat-square" /></a>
+    <a href="https://github.com/AmanTShekar/Zenith-CMS/releases">
+      <img alt="Release" src="https://img.shields.io/github/v/release/AmanTShekar/Zenith-CMS?style=for-the-badge&color=black">
+    </a>
+    <a href="https://nodejs.org/">
+      <img alt="Node Version" src="https://img.shields.io/badge/node-%3E%3D20.11.0-black?style=for-the-badge&logo=nodedotjs">
+    </a>
+    <a href="https://pnpm.io/">
+      <img alt="pnpm" src="https://img.shields.io/badge/pnpm-9.x-black?style=for-the-badge&logo=pnpm">
+    </a>
+    <a href="https://www.typescriptlang.org/">
+      <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-Strict-black?style=for-the-badge&logo=typescript">
+    </a>
+    <a href="LICENSE">
+      <img alt="License" src="https://img.shields.io/github/license/AmanTShekar/Zenith-CMS?style=for-the-badge&color=black">
+    </a>
   </p>
 </div>
 
----
+<br />
 
-## 👋 Welcome to Zenith CMS!
-
-If you're new here, don't worry! **Zenith CMS** is a tool that helps you manage your website's content. Think of it like WordPress, but designed for modern developers and blazing-fast applications. 
-
-You use our beautiful admin dashboard to write your blog posts, upload images, and create pages. Then, your developers can easily fetch that content and display it on any website, mobile app, or platform using our API!
-
-### ✨ Why choose Zenith?
-- **Beginner-Friendly Dashboard**: A sleek, dark-mode visual editor where you can write and manage content without touching any code.
-- **Built-in AI Assistant**: Automatically generate SEO titles, meta descriptions, and improve your writing with the click of a button.
-- **Lightning Fast**: Built on modern web technologies (TypeScript, Node.js, React) ensuring your content loads instantly.
-- **Secure**: Bank-grade security features like auto-lockouts and permissions are built right in.
+> [!NOTE]  
+> Zenith CMS is currently in `v1.0.0-beta`. The platform is actively maintained for production trials, but expect rapidly evolving internal API surfaces until the final v1 release.
 
 ---
 
-## 📚 Documentation Hub
+## Overview
 
-Everything you need to learn about Zenith CMS is right here. Pick a topic to branch out and learn more:
+Zenith CMS is an enterprise-grade headless content management system engineered for maximum throughput, absolute type safety, and deep extensibility. Designed for modern software teams, Zenith bridges the gap between editorial flexibility and strict engineering constraints.
 
-### 🚀 Getting Started
-*New to Zenith? Start here!*
-- **[Onboarding Guide](docs/ONBOARDING.md)**: A quick overview of how the system works.
-- **[Installation Guide](docs/INSTALLATION.md)**: How to install and run Zenith CMS on your computer.
-
-### 🏗️ Core Concepts
-*Learn how Zenith structures your content.*
-- **[Collections & Schemas](docs/COLLECTIONS.md)**: How to define your data (like creating a "Blog Post" template).
-- **[Architecture Deep Dive](docs/ARCHITECTURE.md)**: For developers wanting to understand the engine under the hood.
-
-### 🔌 Advanced Features
-*Supercharge your CMS experience.*
-- **[AI Development](docs/AI_DEVELOPMENT.md)**: How our AI neural bridge works and how to set it up.
-- **[Plugin System](docs/PLUGINS.md)**: Add new features to the CMS.
-- **[API Reference](docs/API.md)**: How to fetch your data using REST or GraphQL.
-- **[Code Examples](docs/EXAMPLES.md)**: Copy-pasteable recipes for common tasks.
-- **[Custom Field Registration](docs/FIELD_REGISTRATION.md)**: Build your own React inputs.
-- **[Real-Time Collaboration](docs/COLLABORATION.md)**: How multiplayer editing works.
-
-### 🛡️ Security & Operations
-*Keep your data safe and running smoothly.*
-- **[Security Overview](docs/SECURITY.md)**: How we protect your data.
-- **[Migration Runbook](docs/migration_runbook.md)**: Moving data between databases.
-- **[Troubleshooting & Issues](docs/ISSUE_GUIDE.md)**: What to do if something goes wrong.
-- **[Architectural Decisions (ADRs)](docs/adr/)**: A history of our major engineering choices.
+Built atop a hyper-optimized monorepo leveraging **Drizzle ORM**, **Turborepo**, **React/Vite**, and **TypeScript**, Zenith natively handles multi-tenant scaling, programmatic schemas, and strict zero-trust security pipelines out of the box.
 
 ---
 
-## ⚡ Quick Start
+## System Architecture
 
-Ready to build something amazing? Check out our **[Installation Guide](docs/INSTALLATION.md)** for step-by-step instructions on bootstrapping a new project, setting up your `.env` variables, and starting the local development server.
+Unlike traditional monolithic platforms, Zenith executes inside a highly decoupled, composable monorepo architecture. 
+
+```mermaid
+flowchart LR
+    Client([Client Application]) -->|REST / SDK| Core[Core API Engine]
+    Admin([Admin UI SPA]) -->|REST / WebSockets| Core
+    
+    subgraph Zenith Platform
+        Core -->|AOT Zod Validation| Types[Types Engine]
+        Core -->|Tenant Isolation| DB[(Primary Database)]
+        Core -.->|Event Triggers| Webhooks[Webhook Dispatcher]
+    end
+
+    DB -.->|PostgreSQL / MongoDB| Core
+```
+
+- **`@zenith-open/zenithcms-core`**: The Node.js REST kernel. Employs Ahead-of-Time (AOT) schema validation via Zod, stopping malicious payloads before controller execution.
+- **`@zenith-open/zenithcms-admin`**: The editorial control plane. A blazing-fast, React-based Single Page Application (SPA) compiled via Vite, featuring dark-mode ergonomics and granular modular UI.
+- **`@zenith-open/zenithcms-types`**: The unified contract layer. Guarantees end-to-end type safety between the database edge and the client browser.
+- **`@zenith-open/zenithcms-sdk`**: A zero-dependency, strongly-typed TypeScript SDK for seamless integration into Next.js, Nuxt, or Astro frontends.
 
 ---
 
-## 🤝 Community & Contributing
+## Core Capabilities
 
-We love contributions from the community! Whether you're fixing a typo or building a huge new feature, we want your help.
-- **[Contributing Guide](CONTRIBUTING.md)**: Read this before submitting your code!
+> [!TIP]  
+> Need to extend the core? Zenith features a robust Plugin Engine that seamlessly injects new routes, database schema patches, and React UI tabs into the platform lifecycle. Refer to the [Plugin Development Guide](docs/PLUGINS.md).
 
-## 📄 License
-Zenith CMS is licensed under the MIT License. See the `LICENSE` file for more details.
+- **Zero-Trust Security**: Granular Role-Based Access Control (RBAC), automatic cryptographic payload signing, and automated token invalidation scopes.
+- **Database Agnostic Edge**: Native, high-performance adapters for both **PostgreSQL** and **MongoDB** through unified Drizzle schemas.
+- **Multiplayer CRDTs**: Real-time collaborative document editing powered by Conflict-free Replicated Data Types.
+- **Event-Driven Webhooks**: Configure declarative HTTP callbacks to trigger Vercel deployments, internal CI/CD pipelines, or Slack notifications instantly upon content state mutations.
+- **Deep AI Integration**: Built-in neural bridge modules for dynamic SEO generation and editorial assistance.
+
+---
+
+## Quick Start
+
+Ensure you are running **Node.js >= 20.11.0** and **pnpm >= 9**.
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/AmanTShekar/Zenith-CMS.git
+cd Zenith-CMS
+
+# 2. Install dependencies across the workspace
+pnpm install
+
+# 3. Provision local environment variables
+cp .env.example .env
+
+# 4. Boot the development cluster (Core API + Admin Dashboard)
+pnpm dev
+```
+
+The Core API will execute on `http://localhost:3000` and the Admin Control Plane on `http://localhost:5173`.
+
+> [!IMPORTANT]  
+> When running the initial setup, a default Super Admin account will be generated. Check your terminal output for the bootstrap credentials.
+
+---
+
+## Technical Documentation Index
+
+Explore our exhaustive technical playbooks to master the platform. Each document provides deep engineering insights into the platform's subsystems.
+
+| Domain | Runbook / Specification |
+| :--- | :--- |
+| **System Operations** | [Installation & Deployment Strategy](docs/INSTALLATION.md) |
+| **Database Design** | [Schemas & Collection Modelling](docs/COLLECTIONS.md) |
+| **Data Synchronization** | [Real-Time Collaboration & CRDTs](docs/COLLABORATION.md) |
+| **Integrations** | [REST API Reference](docs/API.md) |
+| **Extensibility** | [Plugin Engine](docs/PLUGINS.md) |
+| **Extensibility** | [Custom Field Registration](docs/FIELD_REGISTRATION.md) |
+| **Security Posture** | [Zero-Trust Implementation](SECURITY.md) |
+| **Migration** | [Database Migration Runbook](docs/migration_runbook.md) |
+| **Troubleshooting** | [Incident Resolution Guide](docs/ISSUE_GUIDE.md) |
+
+---
+
+## Contribution & Governance
+
+Zenith is open-source and community-driven. We strictly enforce conventional commits, aggressive unit-testing via Vitest, and strict code formatting to ensure industrial stability.
+
+Read our [**Contributing Protocol**](CONTRIBUTING.md) to initialize your Docker Devcontainer and submit your first Pull Request.
+
+---
+
+## License
+
+Zenith CMS is distributed under the [MIT License](LICENSE). 
+
+<div align="center">
+  <i>Engineered with precision.</i>
+</div>

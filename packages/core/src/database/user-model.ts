@@ -10,6 +10,7 @@ const schema = new mongoose.Schema({
   lastLogin: { type: Date },
   failedLoginAttempts: { type: Number, default: 0 },
   lockUntil: { type: Date, default: null },
+  color: { type: String, required: false },
 }, { strict: true, timestamps: true })
 
 schema.index({ email: 1, siteId: 1 }, { unique: true })

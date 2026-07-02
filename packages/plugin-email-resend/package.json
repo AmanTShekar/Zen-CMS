@@ -17,5 +17,12 @@
   "peerDependencies": {
     "@zenith-open/zenithcms-core": "workspace:*",
     "@zenith-open/zenithcms-types": "workspace:*"
-  }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ]
 }

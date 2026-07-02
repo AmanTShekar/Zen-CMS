@@ -70,6 +70,9 @@ export default {
         button: '36px',
         row: '40px',
       },
+      fontFamily: {
+        sans: ['var(--brand-font, "Inter")', 'ui-sans-serif', 'system-ui', 'sans-serif', 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji'],
+      },
     },
   },
   plugins: [require('@tailwindcss/typography')],

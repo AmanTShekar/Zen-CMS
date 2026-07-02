@@ -306,23 +306,91 @@ router.get(
   requireRole('admin'),
   async (req: Request, res: Response, next) => {
     try {
-      const adapter = (req as import('express').Request & { user?: Record<string, any>, zenith?: Record<string, any> }).zenith?.adapter
-      const config = (req as import('express').Request & { user?: Record<string, any>, zenith?: Record<string, any> }).zenith?.config
+      const adapter = (req as any).zenith?.adapter
+      const config = (req as any).zenith?.config
       let size = 0
+      let storageSize = 0
+      let freeStorageSize = 0
+      let documents = 0
+      let indexes = 0
+      let avgObjSize = 0
+      let dbName = ''
+      let dbVersion = ''
+      let connections = 0
+      let collectionDetails: any[] = []
       const collectionCount = config?.collections?.length || 0
 
       if (adapter && adapter.name === 'mongoose') {
-        const db = (adapter as Record<string, any>).connection?.db
+        const db = (adapter as any).connection?.db
         if (db) {
+          // Basic DB stats
           const stats = await db.stats()
-          size = stats.dataSize || stats.storageSize || 0
+          size = stats.dataSize || 0
+          storageSize = stats.storageSize || 0
+          freeStorageSize = stats.freeStorageSize || 0
+          documents = stats.objects || 0
+          indexes = stats.indexes || 0
+          avgObjSize = Math.round(stats.avgObjSize || 0)
+          dbName = db.databaseName || ''
+
+          // Server info
+          try {
+            const buildInfo = await db.admin().buildInfo()
+            dbVersion = buildInfo.version || ''
+          } catch (e) {
+            // ignore
+          }
+
+          // Connection count
+          try {
+            const serverStatus = await db.admin().serverStatus()
+            connections = serverStatus?.connections?.current || 0
+          } catch (e) {
+            // ignore
+          }
+
+          // Per-collection stats
+          try {
+            const colls = await db.listCollections().toArray()
+            collectionDetails = await Promise.all(
+              colls.slice(0, 20).map(async (c: any) => {
+                try {
+                  const cs = await db.collection(c.name).stats()
+                  return {
+                    name: c.name,
+                    count: cs.count || 0,
+                    sizeMB: ((cs.size || 0) / 1024 / 1024).toFixed(3),
+                    avgDocSizeB: Math.round(cs.avgObjSize || 0),
+                    indexes: cs.nindexes || 0,
+                  }
+                } catch {
+                  return { name: c.name, count: 0, sizeMB: '0.000', avgDocSizeB: 0, indexes: 0 }
+                }
+              })
+            )
+          } catch (e) {
+            // ignore
+          }
         }
       }
 
       res.json(
         createResponse({
           size,
+          storageSize,
+          freeStorageSize,
+          documents,
+          indexes,
+          avgObjSize,
           collections: collectionCount,
+          dbName,
+          dbVersion,
+          connections,
+          adapterType: adapter ? (adapter.name || adapter.constructor.name) : 'Unknown',
+          collectionDetails,
+          platform: process.platform,
+          nodeVersion: process.version,
+          pid: process.pid,
         })
       )
     } catch (err) {
@@ -330,6 +398,7 @@ router.get(
     }
   }
 )
+
 
 router.get(
   '/roles',

@@ -33,9 +33,8 @@ const router: import('express').Router = Router()
 router.get('/', requireAuth, requireRole('admin'), async (req: Request, res: Response, next) => {
   try {
     const adapter = getAdapter(req)
-    const siteId = req.headers['x-zenith-site-id'] as string
-    if (!siteId) throw new InvalidPayloadError('x-zenith-site-id header is required')
-    const filter = { siteId }
+    const siteId = (req as any).siteId || req.headers['x-zenith-site-id'] as string
+    const filter = siteId ? { siteId } : {}
     const docs = await adapter.find<Record<string, any>>(WEBHOOK_COLLECTION, filter)
     res.json(createResponse(docs.map(toWebhookDTO)))
   } catch (err) {
@@ -46,13 +45,12 @@ router.get('/', requireAuth, requireRole('admin'), async (req: Request, res: Res
 // ── Get all delivery logs for the system ───────────────────────────────────────
 router.get('/deliveries', requireAuth, requireRole('admin'), async (req: Request, res: Response, next) => {
   try {
-    const siteId = req.headers['x-zenith-site-id'] as string
-    if (!siteId) throw new InvalidPayloadError('x-zenith-site-id header is required')
+    const siteId = (req as any).siteId || req.headers['x-zenith-site-id'] as string
     const limit = Math.min(parseInt(req.query.limit as string) || 50, 200)
     const page = Math.max(parseInt(req.query.page as string) || 1, 1)
     const adapter = getAdapter(req)
 
-    const filter: Record<string, any> = { siteId }
+    const filter: Record<string, any> = siteId ? { siteId } : {}
     if (req.query.status === 'success') filter.success = true
     if (req.query.status === 'failed') filter.success = false
     if (req.query.search) {
@@ -63,7 +61,6 @@ router.get('/deliveries', requireAuth, requireRole('admin'), async (req: Request
     }
 
     const skip = (page - 1) * limit
-    // Assuming z_webhook_deliveries stores webhook deliveries
     const deliveries = await adapter.find('z_webhook_deliveries', filter, { sort: '-createdAt', skip, limit })
     const total = await adapter.count('z_webhook_deliveries', filter)
 
@@ -81,17 +78,15 @@ router.get('/deliveries', requireAuth, requireRole('admin'), async (req: Request
 router.post('/', requireAuth, requireRole('admin'), async (req: Request, res: Response, next) => {
   try {
     const { url, secret, events } = req.body
-    const siteId = req.headers['x-zenith-site-id'] as string
-    if (!siteId) throw new InvalidPayloadError('x-zenith-site-id header is required')
+    const siteId = (req as any).siteId || req.headers['x-zenith-site-id'] as string
+    if (!siteId) return res.status(400).json({ error: 'No active site selected. Please select a site first.' })
     if (!url) throw new InvalidPayloadError('Webhook URL is required')
     if (!events || !Array.isArray(events) || events.length === 0) throw new InvalidPayloadError('At least one event is required')
-    // CRITICAL FIX: validate secret minimum length to prevent empty-string HMAC forgery
     if (secret !== undefined && typeof secret === 'string' && secret.length > 0 && secret.length < 32) {
       throw new InvalidPayloadError('Webhook secret must be at least 32 characters, or omitted to auto-generate')
     }
 
     const adapter = getAdapter(req)
-    // Auto-generate a secure secret if none provided
     const resolvedSecret = secret?.trim()?.length >= 32 ? secret.trim() : `wh_${crypto.randomBytes(24).toString('hex')}`
     const doc = await adapter.create<Record<string, any>>(WEBHOOK_COLLECTION, { url, secret: resolvedSecret, events, enabled: true, siteId })
     await syncEngineConfig(req, adapter)
@@ -108,8 +103,8 @@ router.put('/:id', requireAuth, requireRole('admin'), async (req: Request, res: 
     const { id } = req.params
     const { url, secret, events, enabled } = req.body
     const adapter = getAdapter(req)
-    const siteId = req.headers['x-zenith-site-id'] as string
-    if (!siteId) throw new InvalidPayloadError('x-zenith-site-id header is required')
+    const siteId = (req as any).siteId || req.headers['x-zenith-site-id'] as string
+    if (!siteId) return res.status(404).json({ error: 'Webhook not found' })
 
     // CRITICAL FIX: scope webhook lookup to siteId to prevent cross-tenant update
     const existing = await adapter.findOne<Record<string, any>>(WEBHOOK_COLLECTION, { _id: id, siteId })
@@ -141,8 +136,8 @@ router.put('/:id', requireAuth, requireRole('admin'), async (req: Request, res: 
 router.delete('/:id', requireAuth, requireRole('admin'), async (req: Request, res: Response, next) => {
   try {
     const { id } = req.params
-    const siteId = req.headers['x-zenith-site-id'] as string
-    if (!siteId) throw new InvalidPayloadError('x-zenith-site-id header is required')
+    const siteId = (req as any).siteId || req.headers['x-zenith-site-id'] as string
+    if (!siteId) return res.status(404).json({ error: 'Webhook not found' })
     const adapter = getAdapter(req)
     // CRITICAL FIX: scope webhook lookup to siteId to prevent cross-tenant deletion
     const existing = await adapter.findOne<Record<string, any>>(WEBHOOK_COLLECTION, { _id: id, siteId })
@@ -162,8 +157,8 @@ router.delete('/:id', requireAuth, requireRole('admin'), async (req: Request, re
 router.post('/:id/test', requireAuth, requireRole('admin'), async (req: Request, res: Response, next) => {
   try {
     const { id } = req.params
-    const siteId = req.headers['x-zenith-site-id'] as string
-    if (!siteId) throw new InvalidPayloadError('x-zenith-site-id header is required')
+    const siteId = (req as any).siteId || req.headers['x-zenith-site-id'] as string
+    if (!siteId) return res.status(404).json({ error: 'Webhook not found' })
     const adapter = getAdapter(req)
 
     // CRITICAL FIX: scope webhook lookup to siteId to prevent cross-tenant webhook test
@@ -184,8 +179,8 @@ router.post('/:id/test', requireAuth, requireRole('admin'), async (req: Request,
 	router.get('/:id/deliveries', requireAuth, requireRole('admin'), async (req: Request, res: Response, next) => {
 	  try {
 	    const { id } = req.params
-    const siteId = req.headers['x-zenith-site-id'] as string
-    if (!siteId) throw new InvalidPayloadError('x-zenith-site-id header is required')
+    const siteId = (req as any).siteId || req.headers['x-zenith-site-id'] as string
+    if (!siteId) return res.json(createResponse([]))
 	    const limit = Math.min(parseInt(req.query.limit as string) || 50, 200)
 	    const adapter = getAdapter(req)
 
@@ -204,8 +199,8 @@ router.post('/:id/test', requireAuth, requireRole('admin'), async (req: Request,
 router.post('/:id/deliveries/:deliveryId/replay', requireAuth, requireRole('admin'), async (req: Request, res: Response, next) => {
   try {
     const { id, deliveryId } = req.params
-    const siteId = req.headers['x-zenith-site-id'] as string
-    if (!siteId) throw new InvalidPayloadError('x-zenith-site-id header is required')
+    const siteId = (req as any).siteId || req.headers['x-zenith-site-id'] as string
+    if (!siteId) return res.status(404).json({ error: 'Webhook not found' })
     const adapter = getAdapter(req)
 
     // CRITICAL FIX: scope webhook lookup to siteId to prevent cross-tenant replay

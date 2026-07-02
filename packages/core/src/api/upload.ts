@@ -88,7 +88,7 @@ router.post('/', requireAuth, upload.single('file'), async (req: import('express
 
     let url = ''
     let fileId = ''
-    let altText = ''
+    const altText = ''
 
     let finalPath = filePath
     let finalMimetype = req.file.mimetype
@@ -126,7 +126,7 @@ router.post('/', requireAuth, upload.single('file'), async (req: import('express
     }
 
     // 2. Auto-generate Alt Text & Smart Tags if AI is enabled
-    let tags: string[] = []
+    const tags: string[] = []
     // AI has been extracted to plugin
 
     // 3. Extract focal point from body (sent by MediaPicker FocalPointCropper)

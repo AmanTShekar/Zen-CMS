@@ -8,17 +8,18 @@ Concurrent modification of content models or document data introduces race condi
 
 The collaboration state is synchronized across active clients using a low-latency WebSocket connection, backed by either an in-memory store (in development) or a distributed Redis instance (in production).
 
-```
-    [ Client A ] (Websocket)                [ Client B ] (Websocket)
-             \                                      /
-              v                                    v
-      +----------------------------------------------------+
-      |                 Zenith Core Server                 |
-      |              [ Active Presence Ledger ]            |
-      +-------------------------+--------------------------+
-                                |
-                                v
-                [ Presence Broadcast Event Bus ]
+```mermaid
+flowchart TD
+    ClientA[Client A Web Interface] -- WebSocket --> Core[Zenith Core Server]
+    ClientB[Client B Web Interface] -- WebSocket --> Core
+    
+    subgraph Core[Zenith Core Server]
+        Auth[Connection Authenticator] --> Ledger[(Active Presence Ledger)]
+        Ledger --> Broadcaster[Presence Broadcast Event Bus]
+    end
+    
+    Broadcaster -. Broadcasts State .-> ClientA
+    Broadcaster -. Broadcasts State .-> ClientB
 ```
 
 ## 2. Heartbeat Connection Lifecycle

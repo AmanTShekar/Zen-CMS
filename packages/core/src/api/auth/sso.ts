@@ -30,11 +30,17 @@ async function handleSsoSuccess(req: Request, res: Response, next: NextFunction)
     let user = existing[0]
 
     if (!user) {
+      const AVATAR_COLORS = [
+        '#ef4444', '#f97316', '#f59e0b', '#84cc16', '#10b981', 
+        '#14b8a6', '#06b6d4', '#0ea5e9', '#3b82f6', '#6366f1', 
+        '#8b5cf6', '#d946ef', '#f43f5e'
+      ];
       user = await adapter.create<Record<string, any>>('users', {
         email: profile.email.toLowerCase(),
         password: 'sso-managed-account',
         role: profile.role || 'editor',
-        ssoId: profile.id
+        ssoId: profile.id,
+        color: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)]
       })
     }
 

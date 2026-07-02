@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import {
   Mail, Send, Eye, EyeOff, RefreshCw, Loader2, CheckCircle2,
   AlertTriangle, Info, Zap, Lock, Server, Clock, Shield
@@ -47,6 +47,13 @@ const SettingsNotifications: React.FC<SettingsNotificationsProps> = ({
   const [testEmailOpen, setTestEmailOpen] = useState(false)
   const [sendingTest, setSendingTest] = useState(false)
   const [lastTestResult, setLastTestResult] = useState<{ ok: boolean; msg: string } | null>(null)
+  
+  const isMountedRef = useRef(true)
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false
+    }
+  }, [])
 
   const handlePresetSelect = (providerId: string) => {
     const preset = SMTP_PROVIDERS.find(p => p.id === providerId)

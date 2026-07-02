@@ -1,6 +1,5 @@
 {
   "name": "@zenith-open/zenithcms-admin",
-  "private": true,
   "version": "1.0.0-beta",
   "type": "module",
   "scripts": {
@@ -50,5 +49,12 @@
     "vite": "^5.4.21",
     "vite-plugin-pwa": "^0.21.2",
     "vitest": "^3.0.0"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
   }
 }

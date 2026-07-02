@@ -25,7 +25,7 @@ import { cn } from '../lib/utils'
 import { useTheme } from '../context/ThemeContext'
 import ConnectSnippet from '../components/ConnectSnippet'
 
-const TOTAL_STEPS = 7
+const TOTAL_STEPS = 8
 
 const PROJECT_TYPES = [
  {
@@ -77,6 +77,14 @@ interface WizardState {
  dbTestMessage: string
  dbSaved: boolean
 
+ // Admin Account
+ adminName: string
+ adminEmail: string
+ adminPassword: string
+ adminPasswordConfirm: string
+ adminCreated: boolean
+ adminError: string
+
  // AI keys
  openRouterApiKey: string
  openaiApiKey: string
@@ -104,6 +112,13 @@ export default function SetupWizard() {
  dbTestMessage: '',
  dbSaved: false,
 
+ adminName: '',
+ adminEmail: '',
+ adminPassword: '',
+ adminPasswordConfirm: '',
+ adminCreated: false,
+ adminError: '',
+
  openRouterApiKey: '',
  openaiApiKey: '',
  anthropicApiKey: '',
@@ -125,7 +140,7 @@ export default function SetupWizard() {
 
  const skip = async () => {
  await api.post('/system/onboarding', { skipped: true }).catch(() => {})
- window.location.href = '/'
+ navigate('/login')
  }
 
  const testDbConnection = async () => {
@@ -171,6 +186,16 @@ export default function SetupWizard() {
  try {
  // First save onboarding answers so the complete endpoint gets all state answers (including DB and AI keys)
  await api.post('/system/onboarding', { currentStep: step, answers: state }).catch(() => {})
+
+ // Attempt to create admin user via the register endpoint
+ if (state.adminEmail && state.adminPassword && !state.adminCreated) {
+ await api.post('/auth/register', {
+ name: state.adminName || 'Super Admin',
+ email: state.adminEmail,
+ password: state.adminPassword,
+ role: 'admin',
+ }).catch(() => {})
+ }
 
  const r = await api.post('/system/onboarding/complete', { keyName: state.keyName })
  patch({ generatedKey: r.data?.data?.apiKey || '' })
@@ -597,6 +622,104 @@ export default function SetupWizard() {
  canNext: true,
  },
  {
+ title: 'Create your Admin Account',
+ subtitle: 'Set up the Super Admin credentials you will use to log into Zenith.',
+ icon: <Key size={28} className="text-z-secondary" />,
+ content: (
+  <div className="space-y-5">
+  {state.adminCreated ? (
+   <div className={cn('flex items-center gap-3 p-4 border rounded-none', isDark ? 'bg-green-950/20 border-green-900/40 text-green-400' : 'bg-green-50 border-green-200 text-green-700')}>
+   <CheckCircle2 size={18} />
+   <div>
+    <p className="text-sm font-bold">Admin account created successfully!</p>
+    <p className="text-xs mt-0.5 opacity-80">{state.adminEmail}</p>
+   </div>
+   </div>
+  ) : (
+   <>
+   <div className="space-y-2">
+    <label className="text-sm font-semibold text-z-muted">Full Name</label>
+    <input
+    value={state.adminName}
+    onChange={(e) => patch({ adminName: e.target.value })}
+    placeholder="e.g. Jane Smith"
+    className={cn('w-full px-4 py-3 border rounded-none-none outline-none focus-visible:ring-2 focus-visible:ring-z-active-border focus-visible:ring-offset-1 focus-visible:ring-offset-black text-[13px] font-medium transition-colors', input)}
+    />
+   </div>
+   <div className="space-y-2">
+    <label className="text-sm font-semibold text-z-muted">Admin Email</label>
+    <input
+    type="email"
+    value={state.adminEmail}
+    onChange={(e) => patch({ adminEmail: e.target.value, adminError: '' })}
+    placeholder="admin@yourcompany.com"
+    className={cn('w-full px-4 py-3 border rounded-none-none outline-none focus-visible:ring-2 focus-visible:ring-z-active-border focus-visible:ring-offset-1 focus-visible:ring-offset-black text-[13px] font-medium transition-colors', input)}
+    />
+   </div>
+   <div className="space-y-2">
+    <label className="text-sm font-semibold text-z-muted">Password</label>
+    <input
+    type="password"
+    value={state.adminPassword}
+    onChange={(e) => patch({ adminPassword: e.target.value, adminError: '' })}
+    placeholder="Minimum 8 characters"
+    className={cn('w-full px-4 py-3 border rounded-none-none outline-none focus-visible:ring-2 focus-visible:ring-z-active-border focus-visible:ring-offset-1 focus-visible:ring-offset-black text-[13px] font-medium transition-colors', input)}
+    />
+   </div>
+   <div className="space-y-2">
+    <label className="text-sm font-semibold text-z-muted">Confirm Password</label>
+    <input
+    type="password"
+    value={state.adminPasswordConfirm}
+    onChange={(e) => patch({ adminPasswordConfirm: e.target.value, adminError: '' })}
+    placeholder="Re-enter your password"
+    className={cn('w-full px-4 py-3 border rounded-none-none outline-none focus-visible:ring-2 focus-visible:ring-z-active-border focus-visible:ring-offset-1 focus-visible:ring-offset-black text-[13px] font-medium transition-colors', input)}
+    />
+   </div>
+   {state.adminError && (
+    <p className="text-sm text-red-500 font-medium">{state.adminError}</p>
+   )}
+   <button
+    disabled={loading || !state.adminEmail || !state.adminPassword || state.adminPassword !== state.adminPasswordConfirm}
+    onClick={async () => {
+    if (state.adminPassword !== state.adminPasswordConfirm) {
+     patch({ adminError: 'Passwords do not match.' })
+     return
+    }
+    if (state.adminPassword.length < 8) {
+     patch({ adminError: 'Password must be at least 8 characters.' })
+     return
+    }
+    setLoading(true)
+    try {
+     await api.post('/auth/register', {
+     name: state.adminName || 'Super Admin',
+     email: state.adminEmail,
+     password: state.adminPassword,
+     role: 'admin',
+     })
+     patch({ adminCreated: true, adminError: '' })
+     toast.success('Admin account created!')
+    } catch (e: any) {
+     const msg = e.response?.data?.error?.message || 'Failed to create admin account.'
+     patch({ adminError: msg })
+     toast.error(msg)
+    } finally {
+     setLoading(false)
+    }
+    }}
+    className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-z-accent hover:opacity-90 text-z-primary text-sm font-semibold rounded-none transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+   >
+    {loading ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
+    Create Admin Account
+   </button>
+   </>
+  )}
+  </div>
+ ),
+ canNext: state.adminCreated || (!!state.adminEmail && !!state.adminPassword && state.adminPassword === state.adminPasswordConfirm && state.adminPassword.length >= 8),
+ },
+ {
  title: 'Generate your API key',
  subtitle: 'This key lets your website fetch content from Zenith.',
  icon: <Key size={28} className="text-z-secondary" />,
@@ -676,138 +799,227 @@ export default function SetupWizard() {
  subtitle: 'Use these snippets to start pulling content from Zenith.',
  icon: <Server size={28} className="text-z-secondary" />,
  content: (
- <ConnectSnippet
- apiKey={state.generatedKey}
- publicUrl={(import.meta.env.VITE_API_URL || '').replace(
- /\/api\/v1\/?$/,
- ''
- )}
- theme={theme}
- />
- ),
+  <ConnectSnippet
+  apiKey={state.generatedKey}
+  publicUrl={(import.meta.env.VITE_API_URL || '').replace(
+  /\/api\/v1\/?$/,
+  ''
+  )}
+  theme={theme}
+  />
+  ),
  canNext: true,
  },
  ]
 
  const current = STEPS[step]
+  const completedSteps = step
 
- return (
- <div className={cn('flex-1 w-full min-h-0 flex flex-col p-4 overflow-y-auto overflow-x-hidden', bg)}>
- {/* Skip */}
- <div className="w-full max-w-2xl flex justify-end mb-4 mx-auto mt-auto">
- <button
- onClick={skip}
- className="flex items-center gap-1 text-sm font-semibold text-z-secondary hover:text-z-secondary transition-colors"
- >
- Skip setup <X size={11} />
- </button>
- </div>
+  const STEP_LABELS = [
+    { label: 'Project Setup', desc: 'Name & URL' },
+    { label: 'Project Type', desc: 'What you are building' },
+    { label: 'Content Types', desc: 'Starter collections' },
+    { label: 'Database', desc: 'Connection & adapter' },
+    { label: 'AI Configuration', desc: 'Optional AI keys' },
+    { label: 'Admin Account', desc: 'Super Admin credentials' },
+    { label: 'API Key', desc: 'Authorize your frontend' },
+    { label: 'Connect App', desc: 'Integration snippets' },
+  ]
 
- {/* Card */}
- <div className={cn('w-full max-w-2xl border rounded-none-none overflow-hidden mx-auto my-auto', card)}>
- {/* Progress bar */}
- <div
- className={cn('h-1 transition-all duration-500 bg-z-accent ')}
- style={{ width: `${((step + 1) / TOTAL_STEPS) * 100}%` }}
- />
+  return (
+   <div className={cn('flex w-full min-h-screen', isDark ? 'bg-[#080808] text-z-primary' : 'bg-gray-50 text-z-primary')}>
 
- {/* Step indicator */}
- <div
- className={cn(
- 'flex items-center gap-2 px-8 pt-6',
- isDark ? 'text-z-secondary' : 'text-z-muted'
- )}
- >
- <span className="text-sm font-semibold">
- Step {step + 1} of {TOTAL_STEPS}
- </span>
- <div className="flex gap-1 ml-auto">
- {STEPS.map((_, i) => (
- <div
- key={i}
- className={cn(
- 'w-6 h-1 rounded-none-none transition-all',
- i <= step ? 'bg-z-border' : 'bg-z-hover'
- )}
- />
- ))}
- </div>
- </div>
+    {/* ── LEFT SIDEBAR ── */}
+    <aside className={cn(
+     'hidden lg:flex flex-col w-72 shrink-0 border-r h-screen sticky top-0',
+     isDark ? 'bg-[#0a0a0a] border-z-border' : 'bg-white border-gray-200'
+    )}>
+     {/* Brand */}
+     <div className={cn('px-8 py-8 border-b', isDark ? 'border-z-border' : 'border-gray-100')}>
+      <div className="flex items-center gap-3">
+       <div className={cn('w-8 h-8 rounded flex items-center justify-center text-xs font-black', isDark ? 'bg-z-accent text-z-logo-text' : 'bg-z-accent text-white')}>Z</div>
+       <div>
+        <p className="text-sm font-bold tracking-tight">Zenith CMS</p>
+        <p className={cn('text-[11px] font-medium', isDark ? 'text-z-muted' : 'text-gray-400')}>Setup Wizard</p>
+       </div>
+      </div>
+     </div>
 
- {/* Content */}
- <AnimatePresence mode="wait">
- <motion.div
- key={step}
- initial={{ opacity: 0, x: 20 }}
- animate={{ opacity: 1, x: 0 }}
- exit={{ opacity: 0, x: -20 }}
- transition={{ duration: 0.2 }}
- className="p-8 space-y-6"
- >
- <div className="flex items-center gap-4">
- <div
- className={cn(
- 'w-14 h-14 rounded-none-none flex items-center justify-center shrink-0',
- isDark ? 'bg-z-panel' : 'bg-[var(--z-bg-input)]'
- )}
- >
- {current.icon}
- </div>
- <div>
- <h2 className="text-[22px] font-semibold leading-tight">
- {current.title}
- </h2>
- <p className="text-sm text-z-muted mt-1">{current.subtitle}</p>
- </div>
- </div>
- <div>{current.content}</div>
- </motion.div>
- </AnimatePresence>
+     {/* Step Navigator */}
+     <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
+      {STEP_LABELS.map((s, i) => {
+       const isCompleted = i < completedSteps
+       const isActive = i === step
+       return (
+        <div
+         key={i}
+         className={cn(
+          'flex items-center gap-3 px-4 py-3 rounded transition-all',
+          isActive
+           ? (isDark ? 'bg-z-panel border border-z-border' : 'bg-gray-50 border border-gray-200')
+           : 'border border-transparent'
+         )}
+        >
+         <div className={cn(
+          'w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 transition-all',
+          isCompleted
+           ? 'bg-emerald-500 text-white'
+           : isActive
+            ? (isDark ? 'bg-z-accent text-z-logo-text' : 'bg-z-accent text-white')
+            : (isDark ? 'bg-z-hover text-z-muted border border-z-border' : 'bg-gray-100 text-gray-400 border border-gray-200')
+         )}>
+          {isCompleted ? <Check size={10} strokeWidth={3} /> : i + 1}
+         </div>
+         <div className="min-w-0">
+          <p className={cn('text-[13px] font-semibold truncate', isActive ? '' : (isDark ? 'text-z-muted' : 'text-gray-500'))}>{s.label}</p>
+          <p className={cn('text-[11px] truncate', isDark ? 'text-z-muted/60' : 'text-gray-400')}>{s.desc}</p>
+         </div>
+        </div>
+       )
+      })}
+     </nav>
 
- {/* Footer */}
- <div
- className={cn(
- 'flex items-center justify-between px-8 py-5 border-t',
- isDark ? 'border-z-border' : 'border-z-border shadow-sm'
- )}
- >
- <button
- onClick={back}
- disabled={step === 0}
- className={cn(
- 'flex items-center gap-2 px-5 py-2.5 border text-sm font-semibold  rounded-none-none transition-all',
- step === 0
- ? 'opacity-30 cursor-not-allowed'
- : isDark
- ? 'border-z-border hover:border-z-border'
- : 'border-z-border hover:border-z-border'
- )}
- >
- <ArrowLeft size={14} /> Back
- </button>
- {step === TOTAL_STEPS - 1 ? (
- <button
- onClick={() => { window.location.href = '/' }}
- className="flex items-center gap-2 px-8 py-2.5 bg-z-accent  hover:bg-z-base text-z-primary text-sm font-semibold rounded-none-none transition-all shadow-lg shadow-[var(--z-border)]"
- >
- <CheckCircle2 size={14} /> Go to Dashboard
- </button>
- ) : (
- <button
- onClick={next}
- disabled={!current.canNext}
- className={cn(
- 'flex items-center gap-2 px-8 py-2.5 text-sm font-semibold  rounded-none-none transition-all',
- current.canNext
- ? 'bg-z-accent  hover:bg-z-base text-z-primary shadow-lg shadow-[var(--z-border)]'
- : 'opacity-30 cursor-not-allowed bg-z-accent text-z-secondary'
- )}
- >
- Continue <ArrowRight size={14} />
- </button>
- )}
- </div>
- </div>
- </div>
- )
+     {/* Footer */}
+     <div className={cn('px-8 py-6 border-t', isDark ? 'border-z-border' : 'border-gray-100')}>
+      <button
+       onClick={skip}
+       className={cn('text-[12px] font-medium hover:underline transition-colors', isDark ? 'text-z-muted hover:text-z-secondary' : 'text-gray-400 hover:text-gray-600')}
+      >
+       Skip setup and go to login
+      </button>
+     </div>
+    </aside>
+
+    {/* ── MAIN CONTENT ── */}
+    <main className="flex-1 flex flex-col min-h-screen overflow-y-auto">
+
+     {/* Top Bar */}
+     <header className={cn(
+      'sticky top-0 z-10 flex items-center justify-between px-8 py-4 border-b backdrop-blur-sm',
+      isDark ? 'bg-[#080808]/80 border-z-border' : 'bg-white/80 border-gray-200'
+     )}>
+      <div className="flex items-center gap-3">
+       {/* Mobile progress indicator */}
+       <div className={cn('flex gap-1 lg:hidden')}>
+        {STEPS.map((_, i) => (
+         <div
+          key={i}
+          className={cn(
+           'h-1 rounded-full transition-all duration-300',
+           i <= step ? 'w-5 bg-z-accent' : 'w-2 bg-z-hover'
+          )}
+         />
+        ))}
+       </div>
+       <span className={cn('text-[13px] font-semibold hidden lg:block', isDark ? 'text-z-muted' : 'text-gray-500')}>
+        Step {step + 1} of {TOTAL_STEPS} — <span className={isDark ? 'text-z-primary' : 'text-gray-900'}>{current.title}</span>
+       </span>
+      </div>
+
+      {/* Progress % */}
+      <div className="flex items-center gap-3">
+       <div className={cn('hidden sm:flex items-center gap-2')}>
+        <div className={cn('w-32 h-1.5 rounded-full overflow-hidden', isDark ? 'bg-z-hover' : 'bg-gray-200')}>
+         <div
+          className="h-full bg-z-accent rounded-full transition-all duration-500"
+          style={{ width: `${((step + 1) / TOTAL_STEPS) * 100}%` }}
+         />
+        </div>
+        <span className={cn('text-[12px] font-bold tabular-nums', isDark ? 'text-z-muted' : 'text-gray-400')}>
+         {Math.round(((step + 1) / TOTAL_STEPS) * 100)}%
+        </span>
+       </div>
+       <button
+        onClick={skip}
+        className={cn('lg:hidden flex items-center gap-1 text-[12px] font-semibold', isDark ? 'text-z-muted' : 'text-gray-400')}
+       >
+        Skip <X size={11} />
+       </button>
+      </div>
+     </header>
+
+     {/* Step Content */}
+     <div className="flex-1 flex flex-col justify-center px-8 py-10 max-w-2xl w-full mx-auto">
+
+      <AnimatePresence mode="wait">
+       <motion.div
+        key={step}
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -16 }}
+        transition={{ duration: 0.22, ease: 'easeOut' }}
+        className="space-y-8"
+       >
+        {/* Step Header */}
+        <div className="flex items-start gap-5">
+         <div className={cn(
+          'w-14 h-14 rounded-xl flex items-center justify-center shrink-0 border',
+          isDark ? 'bg-z-panel border-z-border' : 'bg-white border-gray-200 shadow-sm'
+         )}>
+          {current.icon}
+         </div>
+         <div className="pt-1">
+          <h1 className="text-2xl font-bold tracking-tight leading-tight">{current.title}</h1>
+          <p className={cn('text-[14px] mt-1.5', isDark ? 'text-z-muted' : 'text-gray-500')}>{current.subtitle}</p>
+         </div>
+        </div>
+
+        {/* Step Body */}
+        <div className={cn(
+         'rounded-xl border p-6',
+         isDark ? 'bg-[#0d0d0d] border-z-border' : 'bg-white border-gray-200 shadow-sm'
+        )}>
+         {current.content}
+        </div>
+       </motion.div>
+      </AnimatePresence>
+     </div>
+
+     {/* Footer Navigation */}
+     <footer className={cn(
+      'sticky bottom-0 border-t px-8 py-4 flex items-center justify-between backdrop-blur-sm',
+      isDark ? 'bg-[#080808]/90 border-z-border' : 'bg-white/90 border-gray-200'
+     )}>
+      <button
+       onClick={back}
+       disabled={step === 0}
+       className={cn(
+        'flex items-center gap-2 px-5 py-2.5 border rounded text-sm font-semibold transition-all',
+        step === 0
+         ? 'opacity-20 cursor-not-allowed border-z-border'
+         : isDark
+          ? 'border-z-border hover:bg-z-hover'
+          : 'border-gray-200 hover:bg-gray-50 text-gray-700'
+       )}
+      >
+       <ArrowLeft size={14} /> Back
+      </button>
+
+      <div className="flex items-center gap-3">
+       {step === TOTAL_STEPS - 1 ? (
+        <button
+         onClick={() => { navigate('/login') }}
+         className="flex items-center gap-2 px-8 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded transition-all shadow-md"
+        >
+         <CheckCircle2 size={15} /> Enter Admin Dashboard
+        </button>
+       ) : (
+        <button
+         onClick={next}
+         disabled={!current.canNext}
+         className={cn(
+          'flex items-center gap-2 px-8 py-2.5 text-sm font-bold rounded transition-all shadow-md',
+          current.canNext
+           ? 'bg-z-accent hover:opacity-90 text-z-primary'
+           : 'opacity-30 cursor-not-allowed bg-z-accent text-z-primary'
+         )}
+        >
+         Continue <ArrowRight size={14} />
+        </button>
+       )}
+      </div>
+     </footer>
+    </main>
+   </div>
+  )
 }

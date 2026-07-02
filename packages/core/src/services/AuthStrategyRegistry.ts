@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
+ 
 
 import { logger } from './logger'
 import passport from 'passport'

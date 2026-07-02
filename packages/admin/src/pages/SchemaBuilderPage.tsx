@@ -858,14 +858,14 @@ ${fieldsCode}
  setSettings(prev => ({ ...prev, [key]: !prev[key] }))
  }}
  className={cn(
- 'w-8 h-4 rounded-none relative transition-all cursor-pointer',
- settings[key] ? 'bg-z-border' : dark ? 'bg-z-panel/10' : 'bg-[var(--z-border)]',
+ 'w-8 h-4 rounded-full relative transition-all cursor-pointer border border-transparent shadow-inner',
+ settings[key] ? (dark ? 'bg-z-accent' : 'bg-z-accent') : (dark ? 'bg-gray-700' : 'bg-gray-300'),
  isCodeFirst && 'opacity-50 cursor-not-allowed'
  )}
  >
  <div className={cn(
- 'absolute top-0.5 w-3 h-3 rounded-none bg-z-panel shadow transition-all',
- settings[key] ? 'left-4' : 'left-0.5'
+ 'absolute top-[1.5px] w-3 h-3 rounded-full bg-white shadow-sm transition-all',
+ settings[key] ? 'left-[17px]' : 'left-[1.5px]'
  )} />
  </div>
  <span className="text-sm font-bold capitalize text-z-muted group-hover:text-z-primary transition-colors">

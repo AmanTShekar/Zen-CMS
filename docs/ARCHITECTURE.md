@@ -10,11 +10,11 @@ This document details the request lifecycle, the bridging of the database adapte
 
 Zenith uses `pnpm` workspaces to manage discrete packages.
 
-```
-c:/Users/Asus/Desktop/cms/
+```text
+Zenith-CMS/
 ├── packages/
 │   ├── core/         # Backend API (Express, Database Adapters, Hooks, Webhooks)
-│   ├── admin/        # Headless Admin UI (React 19, Vite, Zustand, Tailwind)
+│   ├── admin/        # Headless Admin UI (React, Vite, Zustand, Tailwind)
 │   ├── blog-demo/    # Example Frontend Consumer (Vite/React)
 │   └── types/        # Unified Types & Field Config Schemas
 └── cms.config.ts     # Global Configuration & Schema Definitions
@@ -119,12 +119,5 @@ To mitigate this, Zenith implements an internal disk cache in `media/.cache/` fo
 
 Unlike legacy headless CMS platforms, Zenith features a robust, deeply integrated Real-Time WebSocket engine. 
 
-> [!TIP]
-> **Real-Time by Default**: Zenith's websocket layer pushes instant database updates, presence awareness, and collaborative editing states to the Admin UI in milliseconds. This real-time architecture is a significant competitive advantage and enables Google Docs-style collaboration natively out of the box.
-
----
-
-## 7. Next Steps
-
-- For an overview of API consumption, refer to the [REST API Manual](./MANUAL.md#part-6--the-rest-api).
-- For details on setting up local instances, refer to the [Getting Started Manual](./MANUAL.md#part-1--getting-started).
+> [!NOTE]
+> **Real-Time by Default**: Zenith's websocket layer pushes instant database updates, presence awareness, and collaborative editing states to the Admin UI in milliseconds. This real-time architecture is a significant competitive advantage and enables collaborative editing natively out of the box.

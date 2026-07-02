@@ -19,5 +19,9 @@
   "devDependencies": {
     "@types/node": "^22.11.0",
     "typescript": "~6.0.2"
-  }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ]
 }

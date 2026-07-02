@@ -129,7 +129,7 @@ formsRouter.post('/public/:slug/submit', async (req: Request, res: Response, nex
     }
 
     // 3. Save submission
-    const submission = await adapter.create('z_form_submissions', {
+    const submission = await adapter.create<any>('z_form_submissions', {
       formId: form._id,
       siteId,
       data,

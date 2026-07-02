@@ -5,7 +5,8 @@
     "access": "public"
   },
   "bin": {
-    "zenithcms": "./dist/index.js"
+    "zenithcms": "./dist/index.js",
+    "zenith": "./dist/index.js"
   },
   "type": "module",
   "scripts": {
@@ -19,5 +20,9 @@
   "devDependencies": {
     "@types/node": "^22.11.0",
     "typescript": "~6.0.2"
-  }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ]
 }

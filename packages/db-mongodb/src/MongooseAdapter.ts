@@ -213,6 +213,7 @@ export class MongooseAdapter implements DatabaseAdapter {
           email: { type: String, required: true },
           collectionName: { type: String, required: true },
           documentId: { type: String, required: true },
+          siteId: { type: String, required: false },
           lastActive: { type: Number, required: true },
         },
         { timestamps: false, strict: true, collection: 'z_presence' }

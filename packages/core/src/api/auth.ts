@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
+ 
 import { Router, Request, Response, NextFunction } from 'express'
 import jwt from 'jsonwebtoken'
 import * as otplibPkg from 'otplib'
@@ -44,6 +44,15 @@ import { env } from '../config/env';
 
 const emailSchema = z.string().email().max(254)
 const passwordSchema = z.string().min(8).max(128)
+
+const AVATAR_COLORS = [
+  '#ef4444', '#f97316', '#f59e0b', '#84cc16', '#10b981', 
+  '#14b8a6', '#06b6d4', '#0ea5e9', '#3b82f6', '#6366f1', 
+  '#8b5cf6', '#d946ef', '#f43f5e'
+];
+function getRandomColor() {
+  return AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
+}
 
 const router: Router = Router()
 // Apply site middleware to all auth routes
@@ -201,6 +210,7 @@ router.post('/register', authLimiter, async (req: Request, res: Response, next) 
       email: email.toLowerCase(),
       password: hashed,
       role: assignedRole,
+      color: getRandomColor(),
     })
 
     const userId = (user.id || user._id).toString()
@@ -481,6 +491,7 @@ router.post('/setup', authLimiter, async (req: Request, res: Response, next) => 
       email: email.toLowerCase(),
       password: hashed,
       role: 'admin',
+      color: getRandomColor(),
     })
 
     const userId = (user.id || user._id).toString()

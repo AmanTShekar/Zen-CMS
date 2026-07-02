@@ -15,10 +15,10 @@ const router: import('express').Router = Router()
 // ── List all installed plugins ────────────────────────────────────────────────
 router.get('/', requireAuth, requireRole('admin'), async (req: Request, res: Response, next) => {
   try {
-    const siteId = req.headers['x-zenith-site-id'] as string
-    if (!siteId) throw new InvalidPayloadError('x-zenith-site-id header is required')
+    const siteId = (req as any).siteId || req.headers['x-zenith-site-id'] as string
     const adapter = getAdapter(req)
-    const docs = await adapter.find<Record<string, any>>(PLUGINS_COLLECTION, { siteId })
+    const filter = siteId ? { siteId } : {}
+    const docs = await adapter.find<Record<string, any>>(PLUGINS_COLLECTION, filter)
     res.json(createResponse(docs))
   } catch (err) {
     next(err)
@@ -33,8 +33,8 @@ router.post('/', requireAuth, requireRole('admin'), async (req: Request, res: Re
     if (!id) throw new InvalidPayloadError('Plugin id is required')
     if (!name) throw new InvalidPayloadError('Plugin name is required')
 
-    const siteId = req.headers['x-zenith-site-id'] as string
-    if (!siteId) throw new InvalidPayloadError('x-zenith-site-id header is required')
+    const siteId = (req as any).siteId || req.headers['x-zenith-site-id'] as string
+    if (!siteId) return res.status(400).json({ error: 'No active site selected.' })
     const adapter = getAdapter(req)
 
     // Check if plugin already exists
@@ -66,8 +66,8 @@ router.post('/', requireAuth, requireRole('admin'), async (req: Request, res: Re
 router.put('/:id', requireAuth, requireRole('admin'), async (req: Request, res: Response, next) => {
   try {
     const { id } = req.params
-    const siteId = req.headers['x-zenith-site-id'] as string
-    if (!siteId) throw new InvalidPayloadError('x-zenith-site-id header is required')
+    const siteId = (req as any).siteId || req.headers['x-zenith-site-id'] as string
+    if (!siteId) return res.status(404).json({ error: 'Plugin not found' })
     const { config, enabled, ...rest } = req.body
     const adapter = getAdapter(req)
     
@@ -91,8 +91,8 @@ router.put('/:id', requireAuth, requireRole('admin'), async (req: Request, res: 
 router.delete('/:id', requireAuth, requireRole('admin'), async (req: Request, res: Response, next) => {
   try {
     const { id } = req.params
-    const siteId = req.headers['x-zenith-site-id'] as string
-    if (!siteId) throw new InvalidPayloadError('x-zenith-site-id header is required')
+    const siteId = (req as any).siteId || req.headers['x-zenith-site-id'] as string
+    if (!siteId) return res.status(404).json({ error: 'Plugin not found' })
     const adapter = getAdapter(req)
 
     const existing = await adapter.findOne<Record<string, any>>(PLUGINS_COLLECTION, { _id: id, siteId })

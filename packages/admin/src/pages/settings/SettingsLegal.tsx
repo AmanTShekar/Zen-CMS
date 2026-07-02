@@ -426,7 +426,10 @@ export default function SettingsLegal({ theme = 'dark' }: SettingsLegalProps) {
         <button
           onClick={handleSave}
           disabled={saving}
-          className={cn('flex items-center gap-2 px-8 py-3 text-sm font-semibold   transition-all', dark ? 'bg-z-accent hover:brightness-110 text-z-logo-text shadow-sm' : 'bg-z-accent text-z-logo-text hover:opacity-90')}
+          className={cn(
+            'flex items-center justify-center gap-2 px-6 py-2.5 rounded-lg text-sm font-semibold transition-all shadow-sm hover:scale-105 active:scale-95 disabled:opacity-50 disabled:hover:scale-100',
+            dark ? 'bg-emerald-500 hover:bg-emerald-400 text-black' : 'bg-emerald-500 text-white hover:bg-emerald-600'
+          )}
         >
           {saving ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
           Save Compliance Config

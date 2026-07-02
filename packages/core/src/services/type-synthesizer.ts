@@ -1,5 +1,5 @@
 // @ts-nocheck
-/* eslint-disable @typescript-eslint/ban-ts-comment */
+ 
 
 import fs from 'fs/promises'
 import path from 'path'

@@ -15,32 +15,46 @@ export default function StatCardWidget({ config = {}, theme, title, isPreview }:
  const metric = config.metric || 'total_records'
  const def = METRIC_MAP[metric] || METRIC_MAP.total_records
  const [value, setValue] = useState<string | number>(isPreview ? '9,999' : '—')
+ const [rawUptime, setRawUptime] = useState<number | null>(null)
  const [loading, setLoading] = useState(!isPreview)
 
  useEffect(() => {
   if (isPreview) return;
- api
- .get(def.path)
- .then((r) => {
- const data = r.data?.data
- if (metric === 'total_records') {
- const total =
- typeof data === 'object'
- ? Object.values(data as Record<string, number>).reduce((a, b) => a + (b as number), 0)
- : 0
- setValue(total.toLocaleString())
- } else if (metric === 'uptime') {
- const up = data?.system?.uptime ?? data?.uptime ?? 0
- setValue(`${Math.floor(up / 3600)}h ${Math.floor((up % 3600) / 60)}m`)
- } else if (metric === 'db_status') {
- setValue(data?.database === 'ok' ? 'ONLINE' : 'DEGRADED')
- } else {
- setValue(data?.[def.key] ?? '—')
- }
- })
- .catch(() => setValue('Error'))
- .finally(() => setLoading(false))
- }, [metric, def.path, def.key])
+  api
+  .get(def.path)
+  .then((r) => {
+  const data = r.data?.data
+  if (metric === 'total_records') {
+    const total = typeof data === 'object'
+    ? Object.values(data as Record<string, number>).reduce((a, b) => a + (b as number), 0)
+    : 0
+    setValue(total.toLocaleString())
+  } else if (metric === 'uptime') {
+    const up = data?.system?.uptime ?? data?.uptime ?? 0
+    setRawUptime(up)
+  } else if (metric === 'db_status') {
+    setValue(data?.database === 'ok' ? 'ONLINE' : 'DEGRADED')
+  } else {
+    setValue(data?.[def.key] ?? '—')
+  }
+  })
+  .catch(() => setValue('Error'))
+  .finally(() => setLoading(false))
+ }, [metric, def.path, def.key, isPreview])
+
+ useEffect(() => {
+   if (metric !== 'uptime' || rawUptime === null) return
+   const timer = setInterval(() => {
+     setRawUptime(prev => prev !== null ? prev + 1 : prev)
+   }, 1000)
+   return () => clearInterval(timer)
+ }, [metric, rawUptime === null])
+ 
+ const displayValue = metric === 'uptime' && rawUptime !== null 
+    ? (rawUptime < 3600 
+      ? `${Math.floor(rawUptime / 60)}m ${Math.floor(rawUptime % 60)}s` 
+      : `${Math.floor(rawUptime / 3600)}h ${Math.floor((rawUptime % 3600) / 60)}m ${Math.floor(rawUptime % 60)}s`)
+    : value
 
  return (
  <div className="flex flex-col justify-between p-1">
@@ -58,7 +72,7 @@ export default function StatCardWidget({ config = {}, theme, title, isPreview }:
  </p>
  <div className="flex items-baseline gap-2">
  <span className="text-3xl font-semibold leading-none">
- {loading ? '...' : value}
+ {loading ? '...' : displayValue}
  </span>
  <ArrowUpRight size={12} className="text-z-muted" />
  </div>

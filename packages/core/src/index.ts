@@ -822,42 +822,85 @@ export class ZenithEngine {
       await setupGraphQL(this.app, this.config)
 
       // ── Admin SPA Serving (production) ────────────────────────────────────
-      const adminDist = path.resolve(process.cwd(), 'packages/admin/dist')
+      const monorepoAdminDist = path.resolve(process.cwd(), 'packages/admin/dist')
+      const nodeModulesAdminDist = path.resolve(process.cwd(), 'node_modules/@zenith-open/zenithcms-admin/dist')
+      
+      let adminDist = monorepoAdminDist
       try {
-        await fs.access(adminDist)
-        const stat = await fs.stat(adminDist)
-        if (stat.isDirectory()) {
-          // Hashed assets (in /assets/) — cache forever since filenames are unique
-          this.app.use('/assets', express.static(path.join(adminDist, 'assets'), {
-            maxAge: '1y',
-            immutable: true,
-          }))
-
-          // Other static files (favicon, etc.)
-          this.app.use(express.static(adminDist))
-
-          // SPA catch-all: serve index.html for any unmatched GET (non-API) route
-          let cachedHtml: string | null = null
-          this.app.get('*', (req, res, next) => {
-            if (req.path.startsWith('/api/') || req.path.startsWith('/media/') || req.path.startsWith('/uploads/')) {
-              return next()
-            }
-            if (!req.accepts('html')) return next()
-            if (cachedHtml) {
-              return res.type('html').send(cachedHtml)
-            }
-            fs.readFile(path.join(adminDist, 'index.html'), 'utf-8')
-              .then((html) => {
-                cachedHtml = html
-                res.type('html').send(html)
-              })
-              .catch(() => next())
-          })
-
-          logger.info(`Admin SPA serving from ${adminDist}`)
-        }
+        await fs.access(monorepoAdminDist)
       } catch {
-        logger.info('Admin SPA dist not found — serving API only')
+        try {
+          await fs.access(nodeModulesAdminDist)
+          adminDist = nodeModulesAdminDist
+        } catch {
+          adminDist = null as any
+        }
+      }
+
+      if (adminDist) {
+        try {
+          const stat = await fs.stat(adminDist)
+          if (stat.isDirectory()) {
+            // Hashed assets (in /assets/) — cache forever since filenames are unique
+            this.app.use('/assets', express.static(path.join(adminDist, 'assets'), {
+              maxAge: '1y',
+              immutable: true,
+            }))
+  
+            // Other static files (favicon, etc.)
+            this.app.use(express.static(adminDist))
+  
+            // SPA catch-all: serve index.html for any unmatched GET (non-API) route
+            let cachedHtml: string | null = null
+            this.app.get('*', (req, res, next) => {
+              if (req.path.startsWith('/api/') || req.path.startsWith('/media/') || req.path.startsWith('/uploads/')) {
+                return next()
+              }
+              if (!req.accepts('html')) return next()
+              if (cachedHtml) {
+                return res.type('html').send(cachedHtml)
+              }
+              fs.readFile(path.join(adminDist, 'index.html'), 'utf-8')
+                .then((html) => {
+                  cachedHtml = html
+                  res.type('html').send(html)
+                })
+                .catch(() => next())
+            })
+  
+            logger.info(`Admin SPA serving from ${adminDist}`)
+          }
+        } catch (e) {
+          logger.info('Admin SPA dist missing or inaccessible — serving API only')
+        }
+      } else {
+        logger.info('Admin SPA package not found — serving API only. (Run "pnpm add @zenith-open/zenithcms-admin" to enable the UI)')
+      }
+
+      // ── Initial Admin User Seeding ────────────────────────────────────────
+      const initialEmail = process.env.INITIAL_ADMIN_EMAIL
+      const initialPassword = process.env.INITIAL_ADMIN_PASSWORD
+      if (initialEmail && initialPassword) {
+        try {
+          const existingAdmins = await this.adapter.find('users', { email: initialEmail })
+          if (existingAdmins.length === 0) {
+            logger.info('Seeding initial Super Admin user...')
+            const bcrypt = await import('bcrypt')
+            const hashedPassword = await bcrypt.hash(initialPassword, 10)
+            await this.adapter.create('users', {
+              email: initialEmail,
+              password: hashedPassword,
+              name: 'Super Admin',
+              role: 'admin',
+              isActive: true,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            })
+            logger.info(`Initial Super Admin created successfully: ${initialEmail}`)
+          }
+        } catch (err) {
+          logger.error('Failed to seed initial admin user', err)
+        }
       }
 
       this.server = this.app.listen(port, () => {

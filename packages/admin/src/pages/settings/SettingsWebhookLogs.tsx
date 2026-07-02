@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Activity, CheckCircle2, XCircle, Clock, RefreshCw, Loader2,
   ChevronDown, ChevronUp, RotateCcw, Filter, Search, Download,
@@ -46,6 +46,12 @@ export default function SettingsWebhookLogs({ theme = 'dark' }: SettingsWebhookL
   const [logs, setLogs] = useState<WebhookDelivery[]>([])
   const [loading, setLoading] = useState(true)
   const [reloading, setReloading] = useState(false)
+  const isMountedRef = useRef(true)
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false
+    }
+  }, [])
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [replayingId, setReplayingId] = useState<string | null>(null)
   const [filter, setFilter] = useState<'all' | 'success' | 'failed'>('all')

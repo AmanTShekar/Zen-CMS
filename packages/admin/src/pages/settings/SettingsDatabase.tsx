@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import {
   HardDrive, Layers, Activity, Trash2, RefreshCw, Scan, Loader2,
   Database, Archive, Clock, TrendingUp, AlertTriangle, CheckCircle2,
-  Download, Upload, Eye, Server, Zap, BarChart3
+  Download, Server, Zap, BarChart3, Cpu, Network, FileCode, Terminal
 } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import api from '../../lib/api'
@@ -11,12 +11,20 @@ import toast from 'react-hot-toast'
 
 interface DBStats {
   size?: number
-  collections?: number | string
+  storageSize?: number
+  freeStorageSize?: number
   documents?: number
   indexes?: number
   avgObjSize?: number
-  storageSize?: number
-  freeStorageSize?: number
+  collections?: number | string
+  dbName?: string
+  dbVersion?: string
+  connections?: number
+  adapterType?: string
+  collectionDetails?: Array<{ name: string; count: number; sizeMB: string; avgDocSizeB: number; indexes: number }>
+  platform?: string
+  nodeVersion?: string
+  pid?: number
   [key: string]: any
 }
 
@@ -152,17 +160,20 @@ const SettingsDatabase: React.FC<SettingsDatabaseProps> = ({ dbStats, theme }) =
 
   const sizeMB = dbStats?.size ? (dbStats.size / 1024 / 1024).toFixed(2) : '0.00'
   const storageMB = dbStats?.storageSize ? (dbStats.storageSize / 1024 / 1024).toFixed(2) : '0.00'
+  const freeMB = dbStats?.freeStorageSize ? (dbStats.freeStorageSize / 1024 / 1024).toFixed(2) : null
   const collections = dbStats?.collections || '0'
   const documents = dbStats?.documents || 0
   const indexes = dbStats?.indexes || 0
+  const avgObjSize = dbStats?.avgObjSize || 0
+  const collDetails = dbStats?.collectionDetails || []
 
-  const stats = [
-    { label: 'Data Size', value: `${sizeMB} MB`, icon: HardDrive, color: 'text-z-active-text', bg: 'bg-z-active-bg', border: 'border-z-active-border' },
-    { label: 'Collections', value: String(collections), icon: Layers, color: 'text-z-active-text', bg: 'bg-z-accent/10', border: 'border-z-accent/20' },
-    { label: 'Documents', value: documents.toLocaleString(), icon: Database, color: 'text-z-active-text', bg: 'bg-z-active-bg', border: 'border-z-accent/20' },
-    { label: 'Indexes', value: String(indexes), icon: BarChart3, color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/20' },
-    { label: 'Storage Used', value: `${storageMB} MB`, icon: HardDrive, color: 'text-pink-400', bg: 'bg-pink-500/10', border: 'border-pink-500/20' },
-    { label: 'DB Health', value: 'OPTIMAL', icon: Activity, color: 'text-z-active-text', bg: 'bg-z-active-bg', border: 'border-z-accent/20' },
+  const topStats = [
+    { label: 'Data Size',     value: `${sizeMB} MB`,                    icon: HardDrive,    color: 'text-z-active-text', bg: 'bg-z-active-bg',      border: 'border-z-active-border' },
+    { label: 'Storage Used',  value: `${storageMB} MB`,                  icon: HardDrive,    color: 'text-pink-400',      bg: 'bg-pink-500/10',     border: 'border-pink-500/20' },
+    { label: 'Collections',   value: String(collections),                 icon: Layers,       color: 'text-z-active-text', bg: 'bg-z-accent/10',     border: 'border-z-accent/20' },
+    { label: 'Documents',     value: Number(documents).toLocaleString(), icon: Database,     color: 'text-sky-400',       bg: 'bg-sky-500/10',      border: 'border-sky-500/20' },
+    { label: 'Total Indexes', value: String(indexes),                    icon: BarChart3,    color: 'text-amber-400',     bg: 'bg-amber-500/10',    border: 'border-amber-500/20' },
+    { label: 'Avg Doc Size',  value: avgObjSize ? `${avgObjSize} B` : '—', icon: Zap,        color: 'text-violet-400',    bg: 'bg-violet-500/10',   border: 'border-violet-500/20' },
   ]
 
   const card = cn(
@@ -177,23 +188,90 @@ const SettingsDatabase: React.FC<SettingsDatabaseProps> = ({ dbStats, theme }) =
 
   return (
     <div className="space-y-6">
-      {/* Stat Cards */}
+
+      {/* ── Technical Identity ─────────────────────────────────── */}
+      <div className={cn(card, 'p-5')}>
+        <p className="text-sm font-semibold text-z-secondary mb-4 flex items-center gap-2">
+          <Server size={13} /> Database Identity
+        </p>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-x-8 gap-y-3">
+          {[
+            { label: 'Adapter',      value: dbStats?.adapterType || '—' },
+            { label: 'Database',     value: dbStats?.dbName || '—' },
+            { label: 'Server Ver.',  value: dbStats?.dbVersion || '—' },
+            { label: 'Connections',  value: dbStats?.connections != null ? String(dbStats.connections) : '—' },
+            { label: 'Free Storage', value: freeMB ? `${freeMB} MB` : '—' },
+            { label: 'Platform',     value: dbStats?.platform || '—' },
+            { label: 'Node.js',      value: dbStats?.nodeVersion || '—' },
+            { label: 'Process PID',  value: dbStats?.pid ? String(dbStats.pid) : '—' },
+          ].map(({ label, value }) => (
+            <div key={label}>
+              <p className="text-xs font-semibold text-z-secondary uppercase tracking-wide">{label}</p>
+              <p className="text-sm font-mono font-semibold text-z-primary mt-0.5">{value}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Stat Cards ─────────────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        {stats.map((stat, i) => (
-          <div key={i} className={cn(card, 'p-5 flex flex-col gap-4 group')}>
+        {topStats.map((stat, i) => (
+          <div key={i} className={cn(card, 'p-5 flex flex-col gap-3')}>
             <div className="flex items-center justify-between">
-              <div className={cn('w-10 h-10 flex items-center justify-center border', stat.bg, stat.border)}>
-                <stat.icon size={18} className={stat.color} />
+              <div className={cn('w-9 h-9 flex items-center justify-center border', stat.bg, stat.border)}>
+                <stat.icon size={16} className={stat.color} />
               </div>
-              <span className="text-sm font-semibold text-z-active-text">Live</span>
+              <span className="text-xs font-semibold text-emerald-400 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse inline-block" />
+                Live
+              </span>
             </div>
             <div>
-              <p className="text-sm font-semibold text-z-secondary">{stat.label}</p>
-              <p className={cn('text-xl font-semibold  mt-1', 'text-z-primary')}>{stat.value}</p>
+              <p className="text-xs font-semibold text-z-secondary uppercase tracking-wide">{stat.label}</p>
+              <p className="text-xl font-semibold mt-1 text-z-primary tabular-nums">{stat.value}</p>
             </div>
           </div>
         ))}
       </div>
+
+      {/* ── Per-Collection Breakdown ───────────────────────────── */}
+      {collDetails.length > 0 && (
+        <div className={cn(card, 'overflow-hidden')}>
+          <div className="flex items-center gap-2 p-4 border-b" style={{ borderColor: 'var(--z-border)' }}>
+            <Terminal size={13} className="text-z-secondary" />
+            <p className="text-sm font-semibold text-z-primary">Collection Breakdown</p>
+            <span className="ml-auto text-xs text-z-secondary">{collDetails.length} collections</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className={cn('border-b', dark ? 'bg-z-hover border-z-border' : 'bg-z-input border-z-border')}>
+                  {['Collection', 'Docs', 'Size (MB)', 'Avg Doc', 'Indexes'].map(h => (
+                    <th key={h} className="text-left px-4 py-2.5 font-semibold text-z-secondary uppercase tracking-wide">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y" style={{ borderColor: 'var(--z-border)' }}>
+                {collDetails.map((c) => (
+                  <tr key={c.name} className={cn('transition-colors', dark ? 'hover:bg-z-hover/40' : 'hover:bg-z-input/60')}>
+                    <td className="px-4 py-2.5 font-mono font-semibold text-z-primary">
+                      {c.name.startsWith('z_') ? (
+                        <span className="text-z-secondary">{c.name}</span>
+                      ) : c.name}
+                    </td>
+                    <td className="px-4 py-2.5 tabular-nums text-z-primary">{c.count.toLocaleString()}</td>
+                    <td className="px-4 py-2.5 tabular-nums text-z-primary">{c.sizeMB}</td>
+                    <td className="px-4 py-2.5 tabular-nums text-z-secondary">{c.avgDocSizeB > 0 ? `${c.avgDocSizeB} B` : '—'}</td>
+                    <td className="px-4 py-2.5 tabular-nums">
+                      <span className={cn('px-1.5 py-0.5 border font-mono', 'text-amber-400 border-amber-500/20 bg-amber-500/10')}>{c.indexes}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Test Connection */}
       <div className={cn(card, 'p-6 space-y-4')}>

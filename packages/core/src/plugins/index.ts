@@ -53,7 +53,7 @@ export function applyPlugins(config: CMSConfig, plugins: ZenithPlugin[]): Zenith
               const existingHook = (col.hooks as Record<string, any>)[hookType]
               if (existingHook) {
                 ;(col.hooks as Record<string, any>)[hookType] = async (...args: any[]) => {
-                  let res = await existingHook(...args)
+                  const res = await existingHook(...args)
                   // For data-mutating hooks (e.g. beforeChange), pass result forward
                   if (res !== undefined && args.length > 0 && typeof res === 'object') {
                     args[0] = res

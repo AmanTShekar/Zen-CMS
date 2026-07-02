@@ -22,6 +22,14 @@ const SettingsSystem: React.FC<SettingsSystemProps> = ({ theme }) => {
   const [logsLoading, setLogsLoading] = useState(false)
   const [showLogs, setShowLogs] = useState(false)
 
+  // Make uptime active
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setHealthData(prev => prev && prev.uptime != null ? { ...prev, uptime: prev.uptime + 1 } : prev)
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [])
+
   const fetchHealth = useCallback(async () => {
     setHealthLoading(true)
     try {
@@ -137,7 +145,11 @@ const SettingsSystem: React.FC<SettingsSystemProps> = ({ theme }) => {
   const memUsedMB = memUsage?.heapUsed ? (memUsage.heapUsed / 1024 / 1024).toFixed(0) : '—'
   const memTotalMB = memUsage?.heapTotal ? (memUsage.heapTotal / 1024 / 1024).toFixed(0) : '—'
   const uptime = healthData?.uptime
-  const uptimeStr = uptime ? `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m` : '—'
+  const uptimeStr = uptime 
+    ? (uptime < 3600 
+      ? `${Math.floor(uptime / 60)}m ${Math.floor(uptime % 60)}s` 
+      : `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m ${Math.floor(uptime % 60)}s`)
+    : '—'
   const dbStatus = healthData?.database || 'unknown'
   const systemStatus = healthData?.status || 'unknown'
 
