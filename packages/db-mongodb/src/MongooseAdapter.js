@@ -1,0 +1,591 @@
+import mongoose from 'mongoose';
+import { getModelForCollection } from './model-factory';
+import { createCacheLayer } from '@zenith-open/zenithcms-db-common';
+import pino from 'pino';
+const logger = pino();
+// Hard ceiling on query result size to prevent memory exhaustion / DoS
+const MAX_QUERY_LIMIT = 500;
+const DEFAULT_QUERY_LIMIT = 100;
+/**
+ * Mongoose Database Adapter — Hardened Edition
+ * ──────────────────────────────────────────
+ * High-performance implementation for MongoDB.
+ * Features: Neural Cache Layer, automatic session management, and health monitoring.
+ */
+export class MongooseAdapter {
+    uri;
+    name = 'mongoose';
+    models = {};
+    cache;
+    consecutiveFailures = 0;
+    circuitBreakerCooldown = 0;
+    CIRCUIT_BREAKER_THRESHOLD = 10;
+    CIRCUIT_BREAKER_RESET_TIMEOUT_MS = 15000;
+    async _withCircuitBreaker(operation) {
+        if (this.consecutiveFailures >= this.CIRCUIT_BREAKER_THRESHOLD) {
+            if (Date.now() < this.circuitBreakerCooldown) {
+                throw new Error('Database Circuit Breaker Open: Too many consecutive failures. Rejecting request to prevent cascade overload.');
+            }
+            else {
+                // Half-open state
+                this.consecutiveFailures = this.CIRCUIT_BREAKER_THRESHOLD - 1;
+            }
+        }
+        try {
+            const result = await operation();
+            this.consecutiveFailures = 0; // reset
+            return result;
+        }
+        catch (err) {
+            this.consecutiveFailures++;
+            if (this.consecutiveFailures === this.CIRCUIT_BREAKER_THRESHOLD) {
+                this.circuitBreakerCooldown = Date.now() + this.CIRCUIT_BREAKER_RESET_TIMEOUT_MS;
+                logger.error(`[MongooseAdapter] Circuit Breaker TRIPPED. DB operations suspended for ${this.CIRCUIT_BREAKER_RESET_TIMEOUT_MS}ms`);
+            }
+            throw err;
+        }
+    }
+    constructor(uri) {
+        this.uri = uri;
+        this.cache = createCacheLayer('MongooseAdapter');
+        logger.info('MongooseAdapter: Neural_Cache_Layer Initialized');
+    }
+    getNativeClient() {
+        return mongoose.connection;
+    }
+    async executeRaw(query, params) {
+        // Mongoose adapter doesn't natively use raw SQL, so we'll throw or return null
+        // depending on usage. For now, just throw an unsupported error.
+        throw new Error('executeRaw is not supported on MongooseAdapter');
+    }
+    async connect() {
+        const poolMax = parseInt(process.env.DB_POOL_SIZE || '10', 10);
+        const maxRetries = parseInt(process.env.DB_CONNECT_MAX_RETRIES || '5', 10);
+        const retryDelay = parseInt(process.env.DB_CONNECT_RETRY_DELAY_MS || '3000', 10);
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                await mongoose.connect(this.uri, {
+                    serverSelectionTimeoutMS: parseInt(process.env.DB_SERVER_SELECTION_TIMEOUT_MS || '5000', 10),
+                    socketTimeoutMS: parseInt(process.env.DB_SOCKET_TIMEOUT_MS || '45000', 10),
+                    maxPoolSize: poolMax,
+                    autoIndex: process.env.ZENITH_AUTO_MIGRATE !== 'false',
+                });
+                logger.info({ attempt }, 'MongooseAdapter: Connected to MongoDB');
+                this._initSystemModels();
+                return;
+            }
+            catch (error) {
+                logger.error({ attempt, error: error.message }, 'MongooseAdapter: Connection failed');
+                if (attempt < maxRetries) {
+                    logger.info({ nextAttemptIn: retryDelay }, 'Retrying MongoDB connection...');
+                    await new Promise((resolve) => setTimeout(resolve, retryDelay));
+                }
+                else {
+                    logger.fatal('Could not connect to MongoDB after all retries. Exiting.');
+                    process.exit(1);
+                }
+            }
+        }
+    }
+    async disconnect() {
+        await mongoose.disconnect();
+        logger.info('MongooseAdapter: Disconnected');
+    }
+    getHealth() {
+        const state = mongoose.connection.readyState;
+        switch (state) {
+            case 0:
+                return 'disconnected';
+            case 1:
+                return 'ok';
+            case 2:
+                return 'connecting';
+            case 3:
+                return 'disconnected';
+            default:
+                return 'error';
+        }
+    }
+    _initSystemModels() {
+        // Ensure system models are indexed for performance
+        if (!mongoose.models['AuditLog']) {
+            const schema = new mongoose.Schema({
+                timestamp: { type: Date, default: Date.now, index: true },
+                collectionName: { type: String, index: true },
+                documentId: { type: String, index: true },
+                userId: { type: String, index: true },
+                userEmail: { type: String },
+                userName: { type: String },
+                action: { type: String, index: true },
+                changes: { type: mongoose.Schema.Types.Mixed },
+                ip: { type: String },
+                userAgent: { type: String },
+                status: { type: String, index: true },
+                resource: { type: String },
+                siteId: { type: String, index: true },
+                hash: { type: String },
+                previousHash: { type: String },
+            }, { strict: false });
+            schema.index({ siteId: 1, timestamp: -1 });
+            schema.index({ action: 1, timestamp: -1 });
+            mongoose.model('AuditLog', schema);
+        }
+        if (!mongoose.models['Version']) {
+            const schema = new mongoose.Schema({
+                timestamp: { type: Date, default: Date.now, index: true },
+                collectionSlug: { type: String, index: true },
+                documentId: { type: String, index: true },
+            }, { strict: false });
+            mongoose.model('Version', schema);
+        }
+        if (!mongoose.models['flows']) {
+            const schema = new mongoose.Schema({
+                name: { type: String, required: true },
+                description: { type: String },
+                active: { type: Boolean, default: false },
+                trigger: { type: mongoose.Schema.Types.Mixed, default: {} },
+                steps: { type: mongoose.Schema.Types.Mixed, default: [] },
+            }, { timestamps: true, strict: false });
+            mongoose.model('flows', schema);
+        }
+        if (!mongoose.models['z_migrations']) {
+            const schema = new mongoose.Schema({
+                name: { type: String, required: true, unique: true, index: true },
+                batch: { type: Number, required: true },
+                executedAt: { type: Date, default: Date.now },
+            }, { strict: true });
+            mongoose.model('z_migrations', schema);
+        }
+        if (!mongoose.models['z_collections']) {
+            const schema = new mongoose.Schema({
+                name: { type: String, required: true },
+                slug: { type: String, required: true, unique: true, index: true },
+                labels: { singular: { type: String }, plural: { type: String } },
+                drafts: { type: Boolean, default: false },
+                timestamps: { type: Boolean, default: true },
+                fields: { type: mongoose.Schema.Types.Mixed, default: [] },
+            }, { timestamps: true, strict: false });
+            mongoose.model('z_collections', schema);
+        }
+        if (!mongoose.models['z_components']) {
+            const schema = new mongoose.Schema({
+                slug: { type: String, required: true, unique: true, index: true },
+                displayName: { type: String, required: true },
+                category: { type: String, default: 'General' },
+                icon: { type: String, default: 'Box' },
+                description: { type: String },
+                fields: { type: mongoose.Schema.Types.Mixed, default: [] },
+            }, { timestamps: true, strict: false });
+            mongoose.model('z_components', schema);
+        }
+        if (!mongoose.models['z_presence']) {
+            const schema = new mongoose.Schema({
+                userId: { type: String, required: true },
+                email: { type: String, required: true },
+                collectionName: { type: String, required: true },
+                documentId: { type: String, required: true },
+                siteId: { type: String, required: false },
+                lastActive: { type: Number, required: true },
+            }, { timestamps: false, strict: true, collection: 'z_presence' });
+            mongoose.model('z_presence', schema);
+        }
+        if (!mongoose.models['Lock']) {
+            const schema = new mongoose.Schema({
+                collectionName: { type: String, required: true, index: true },
+                documentId: { type: String, required: true, index: true },
+                siteId: { type: String, index: true },
+                lockedBy: { type: String, required: true },
+                lockedByEmail: { type: String, required: true },
+                lockedAt: { type: Date, default: Date.now },
+                lockExpiresAt: { type: Date, required: true },
+            }, { collection: 'z_locks', timestamps: false });
+            schema.index({ collectionName: 1, documentId: 1, siteId: 1 }, { unique: true });
+            mongoose.model('Lock', schema);
+        }
+    }
+    async registerCollection(config) {
+        console.log(`[MongooseAdapter] Registering collection: ${config.slug}`);
+        const model = getModelForCollection(config);
+        console.log(`[MongooseAdapter] Successfully registered model: ${model.modelName}`);
+        this.models[config.slug] = model;
+    }
+    async getExistingCollections() {
+        const db = mongoose.connection.db;
+        if (!db)
+            return [];
+        const collections = await db.listCollections().toArray();
+        return collections.map((c) => c.name);
+    }
+    getModel(collection) {
+        if (collection === 'flows')
+            return mongoose.models['flows'];
+        let resolvedCollection = collection;
+        if (collection === 'users')
+            resolvedCollection = 'User';
+        if (collection === 'z_sites' || collection === 'sites')
+            resolvedCollection = 'Site';
+        if (collection === 'z_workspaces' || collection === 'workspaces')
+            resolvedCollection = 'Workspace';
+        if (collection === 'z_password_resets')
+            resolvedCollection = 'z_password_resets';
+        if (collection === 'z_api_keys')
+            resolvedCollection = 'z_api_keys';
+        if (collection === 'z_migrations')
+            resolvedCollection = 'z_migrations';
+        if (collection === 'z_collections')
+            resolvedCollection = 'z_collections';
+        if (collection === 'z_components')
+            resolvedCollection = 'z_components';
+        if (collection === 'z_presence')
+            resolvedCollection = 'z_presence';
+        if (collection === 'z_locks' || collection === 'locks')
+            resolvedCollection = 'Lock';
+        if (collection === 'z_webhook_configs')
+            resolvedCollection = 'WebhookConfig';
+        if (collection === 'z_plugins')
+            resolvedCollection = 'Plugin';
+        if (collection === 'audit_logs' || collection === 'z_audit_logs')
+            resolvedCollection = 'AuditLog';
+        if (collection === 'versions' || collection === 'z_versions')
+            resolvedCollection = 'Version';
+        if (collection === 'comments')
+            resolvedCollection = 'Comment';
+        const model = this.models[resolvedCollection] || mongoose.models[resolvedCollection];
+        if (!model)
+            throw new Error(`Collection "${collection}" not registered`);
+        return model;
+    }
+    _getCacheKey(method, collection, query, options) {
+        const sortObject = (obj) => {
+            if (obj === null || typeof obj !== 'object')
+                return obj;
+            if (Array.isArray(obj))
+                return obj.map(sortObject);
+            return Object.keys(obj).sort().reduce((acc, key) => {
+                acc[key] = sortObject(obj[key]);
+                return acc;
+            }, {});
+        };
+        const siteId = options?.siteId || options?.tenantId || globalThis.zenithAls?.getStore()?.siteId;
+        const enrichedQuery = siteId ? { ...query, siteId } : query;
+        return `${method}:${collection}:${JSON.stringify(sortObject(enrichedQuery))}:${JSON.stringify(sortObject(options))}`;
+    }
+    async find(collection, query, options = {}) {
+        return this._withCircuitBreaker(async () => {
+            const cacheKey = this._getCacheKey('find', collection, query, options);
+            const cached = await this.cache.get(cacheKey);
+            if (cached)
+                return cached;
+            const globalAot = globalThis.zenithAotBridge;
+            if (globalAot && globalAot.hasQuery(collection, 'find')) {
+                const model = this.getModel(collection);
+                const docs = await globalAot.executeQuery(collection, 'find', mongoose.connection.db, model, this._normalizeQuery(query, options), options);
+                await this.cache.set(cacheKey, docs, collection);
+                return docs;
+            }
+            const model = this.getModel(collection);
+            const normalizedQuery = this._normalizeQuery(query, options);
+            console.log(`[DEBUG] MongooseAdapter.find(${collection}):`, JSON.stringify(normalizedQuery));
+            const q = model.find(normalizedQuery).maxTimeMS(30000);
+            if (options.select)
+                q.select(options.select);
+            if (options.populate) {
+                const populateArr = Array.isArray(options.populate) ? options.populate : [options.populate];
+                populateArr.forEach((p) => q.populate(p));
+            }
+            const requestedLimit = options.limit ?? DEFAULT_QUERY_LIMIT;
+            const limit = Math.min(requestedLimit, MAX_QUERY_LIMIT);
+            const docs = (await q
+                .sort(options.sort || { createdAt: -1 })
+                .skip(options.skip || 0)
+                .limit(limit)
+                .session(options.session)
+                .lean()
+                .exec());
+            await this.cache.set(cacheKey, docs, collection);
+            return docs;
+        });
+    }
+    async findOne(collection, query, options = {}) {
+        return this._withCircuitBreaker(async () => {
+            const cacheKey = this._getCacheKey('findOne', collection, query, options);
+            const cached = await this.cache.get(cacheKey);
+            if (cached)
+                return cached;
+            const model = this.getModel(collection);
+            const q = model.findOne(this._normalizeQuery(query, options)).maxTimeMS(30000);
+            if (options.select)
+                q.select(options.select);
+            if (options.populate) {
+                const populateArr = Array.isArray(options.populate) ? options.populate : [options.populate];
+                populateArr.forEach((p) => q.populate(p));
+            }
+            const doc = (await q
+                .session(options.session)
+                .lean()
+                .exec());
+            if (doc)
+                await this.cache.set(cacheKey, doc, collection);
+            return doc;
+        });
+    }
+    async findMany(collection, ids, options = {}) {
+        return this._withCircuitBreaker(async () => {
+            if (!ids || ids.length === 0)
+                return [];
+            const model = this.getModel(collection);
+            const siteId = options?.siteId || options?.tenantId || globalThis.zenithAls?.getStore()?.siteId;
+            const query = { _id: { $in: ids } };
+            if (siteId && siteId !== 'global') {
+                query.siteId = siteId;
+            }
+            const docs = await model
+                .find(query)
+                .session(options.session)
+                .maxTimeMS(30000)
+                .lean()
+                .exec();
+            return docs;
+        });
+    }
+    async _invalidateCache(collection) {
+        await this.cache.invalidate(collection);
+    }
+    async create(collection, data, options = {}) {
+        return this._withCircuitBreaker(async () => {
+            // Inject tenant scoping into created documents
+            const siteId = options?.siteId || options?.tenantId || globalThis.zenithAls?.getStore()?.siteId;
+            const enrichedData = siteId && !data.siteId
+                ? { ...data, siteId }
+                : data;
+            const globalAot = globalThis.zenithAotBridge;
+            if (globalAot && globalAot.hasQuery(collection, 'create')) {
+                const model = this.getModel(collection);
+                const doc = await globalAot.executeQuery(collection, 'create', mongoose.connection.db, model, enrichedData, options);
+                await this._invalidateCache(collection);
+                return doc;
+            }
+            const model = this.getModel(collection);
+            const [doc] = await model.create([enrichedData], { session: options.session });
+            await this._invalidateCache(collection);
+            return doc.toObject();
+        });
+    }
+    async update(collection, id, data, options = {}) {
+        return this._withCircuitBreaker(async () => {
+            const model = this.getModel(collection);
+            const siteId = options?.siteId || options?.tenantId || globalThis.zenithAls?.getStore()?.siteId;
+            const filter = { _id: id };
+            if (siteId)
+                filter.siteId = siteId;
+            // Atomic optimistic locking: include expected _version in the filter
+            if (options.expectedVersion !== undefined) {
+                filter._version = options.expectedVersion;
+            }
+            const doc = await model
+                .findOneAndUpdate(filter, { $set: data }, {
+                new: true,
+                session: options.session,
+                runValidators: true,
+            })
+                .maxTimeMS(30000)
+                .lean()
+                .exec();
+            await this._invalidateCache(collection);
+            return doc;
+        });
+    }
+    _normalizeQuery(query, options) {
+        const normalized = { ...query };
+        if ('id' in normalized) {
+            normalized._id = normalized.id;
+            delete normalized.id;
+        }
+        // Inject tenant scoping from options to prevent cross-tenant data access
+        const siteId = options?.siteId || options?.tenantId || globalThis.zenithAls?.getStore()?.siteId;
+        if (siteId && siteId !== 'global' && !normalized.siteId) {
+            normalized.siteId = siteId;
+        }
+        return normalized;
+    }
+    async findOneAndUpdate(collection, query, update, options) {
+        return this._withCircuitBreaker(async () => {
+            const model = this.getModel(collection);
+            const normalized = this._normalizeQuery(query, options);
+            const returnDoc = options?.returnDocument === 'after' ? true : false;
+            const doc = await model
+                .findOneAndUpdate(normalized, { $set: update }, {
+                new: returnDoc,
+                session: options?.session,
+                runValidators: true,
+            })
+                .maxTimeMS(30000)
+                .lean()
+                .exec();
+            return doc;
+        });
+    }
+    async updateMany(collection, query, data, options = {}) {
+        return this._withCircuitBreaker(async () => {
+            const model = this.getModel(collection);
+            const result = await model.updateMany(this._normalizeQuery(query, options), { $set: data }, {
+                session: options.session,
+            });
+            await this._invalidateCache(collection);
+            return result.modifiedCount;
+        });
+    }
+    async delete(collection, id, options = {}) {
+        return this._withCircuitBreaker(async () => {
+            const model = this.getModel(collection);
+            const siteId = options?.siteId || options?.tenantId || globalThis.zenithAls?.getStore()?.siteId;
+            const objectId = mongoose.Types.ObjectId.isValid(id) && typeof id === 'string' && id.length === 24
+                ? new mongoose.Types.ObjectId(id)
+                : id;
+            const filter = { _id: objectId };
+            if (siteId)
+                filter.siteId = siteId;
+            console.log(`[DEBUG DELETE] collection=${collection} resolvedCollection=${model.modelName} filter=`, filter);
+            const result = await model.findOneAndDelete(filter, { session: options.session }).maxTimeMS(30000);
+            console.log(`[DEBUG DELETE] result=`, !!result);
+            await this._invalidateCache(collection);
+            return !!result;
+        });
+    }
+    async deleteMany(collection, query, options = {}) {
+        return this._withCircuitBreaker(async () => {
+            const model = this.getModel(collection);
+            const result = await model.deleteMany(this._normalizeQuery(query, options), { session: options.session });
+            await this._invalidateCache(collection);
+            return result.deletedCount;
+        });
+    }
+    async count(collection, query, options) {
+        return this._withCircuitBreaker(async () => {
+            const model = this.getModel(collection);
+            return model.countDocuments(this._normalizeQuery(query, options)).maxTimeMS(30000);
+        });
+    }
+    async aggregate(collection, pipeline, options) {
+        return this._withCircuitBreaker(async () => {
+            const model = this.getModel(collection);
+            const enrichedPipeline = [...pipeline];
+            // Inject tenant scoping — prepend $match stage to prevent cross-tenant data leaks
+            const siteId = options?.siteId || options?.tenantId || globalThis.zenithAls?.getStore()?.siteId;
+            if (siteId) {
+                enrichedPipeline.unshift({ $match: { siteId } });
+            }
+            return model.aggregate(enrichedPipeline).option({ maxTimeMS: 30000 }).exec();
+        });
+    }
+    async transaction(fn) {
+        try {
+            const session = await mongoose.startSession();
+            try {
+                let result;
+                await session.withTransaction(async () => {
+                    result = await fn(session);
+                });
+                return result;
+            }
+            catch (error) {
+                // Fallback for standalone MongoDB (no replica set)
+                if (error.message?.includes('replica set') || error.codeName === 'NotAReplicaSet') {
+                    if (process.env.NODE_ENV === 'production') {
+                        throw new Error('FATAL: MongoDB must be running as a Replica Set in production to guarantee ACID transactions. Standalone MongoDB instances are strictly forbidden because they silently drop transactions and risk data corruption.');
+                    }
+                    logger.warn('Transactions not supported on this MongoDB instance. Running without transaction.');
+                    return await fn(undefined);
+                }
+                throw error;
+            }
+            finally {
+                session.endSession();
+            }
+        }
+        catch (sessionError) {
+            // If we can't even start a session
+            if (process.env.NODE_ENV === 'production') {
+                throw new Error(`FATAL: Failed to start MongoDB session in production: ${sessionError.message}. Replica Set is required.`);
+            }
+            logger.warn({ err: sessionError.message }, 'Failed to start MongoDB session. Running without transaction.');
+            return await fn(undefined);
+        }
+    }
+    async createAuditLog(data, options) {
+        const AuditModel = mongoose.models['AuditLog'];
+        if (AuditModel) {
+            if (options?.session) {
+                await AuditModel.create([data], { session: options.session });
+            }
+            else {
+                await AuditModel.create(data);
+            }
+        }
+    }
+    async createVersion(data, options) {
+        const VersionModel = mongoose.models['Version'];
+        if (VersionModel) {
+            if (options?.session) {
+                await VersionModel.create([data], { session: options.session });
+            }
+            else {
+                await VersionModel.create(data);
+            }
+        }
+    }
+    async getVersions(collection, documentId) {
+        const VersionModel = mongoose.models['Version'];
+        if (!VersionModel)
+            return [];
+        return VersionModel.find({ collectionName: collection, documentId })
+            .sort({ timestamp: -1 })
+            .lean()
+            .exec();
+    }
+    async createWebhookDelivery(data) {
+        const WebhookModel = mongoose.models['WebhookDelivery'];
+        if (WebhookModel)
+            await WebhookModel.create(data);
+    }
+    async getWebhookDeliveries(webhookId, limit = 50) {
+        const WebhookModel = mongoose.models['WebhookDelivery'];
+        if (!WebhookModel)
+            return [];
+        const docs = await WebhookModel.find({ webhookId })
+            .sort({ timestamp: -1 })
+            .limit(limit)
+            .lean();
+        return docs.map((d) => ({
+            id: d._id?.toString() || d.id,
+            webhookId: d.webhookId,
+            collectionSlug: d.collectionSlug,
+            event: d.event,
+            url: d.url,
+            payload: d.payload,
+            success: d.success,
+            responseStatus: d.responseStatus,
+            timestamp: d.timestamp,
+        }));
+    }
+    async search(collection, query, fields, limit = 10, options) {
+        return this._withCircuitBreaker(async () => {
+            const model = this.getModel(collection);
+            const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const regex = { $regex: escaped, $options: 'i' };
+            const orQuery = fields.map((f) => ({ [f]: regex }));
+            const findQuery = { $or: orQuery };
+            const siteId = options?.siteId || options?.tenantId || globalThis.zenithAls?.getStore()?.siteId;
+            if (siteId) {
+                findQuery.siteId = siteId;
+            }
+            return model
+                .find(findQuery)
+                .limit(Math.min(limit, 50))
+                .maxTimeMS(30000)
+                .lean()
+                .exec();
+        });
+    }
+}
+//# sourceMappingURL=MongooseAdapter.js.map

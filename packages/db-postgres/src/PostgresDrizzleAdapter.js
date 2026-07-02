@@ -1,0 +1,1626 @@
+import { createCacheLayer } from '@zenith-open/zenithcms-db-common';
+import pino from 'pino';
+// Import Drizzle ORM and Postgres
+import { drizzle } from 'drizzle-orm/node-postgres';
+import { Pool } from 'pg';
+import { sql, eq, and, desc, or, inArray } from 'drizzle-orm';
+import { QueryASTParser } from './query-ast';
+import { getTableConfig } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, jsonb, uuid, integer, boolean, bigint, } from 'drizzle-orm/pg-core';
+const logger = pino();
+/**
+ * PostgreSQL Database Adapter with Drizzle ORM
+ * ─────────────────────────────────────────────
+ * Phase B: "The Tightening"
+ * Features:
+ * - Dynamic Column Mapping (No more JSONB traps)
+ * - Auto-Migration Engine (safe DDL execution on boot)
+ * - Atomic Multi-Table Transactions.
+ * - Pre-compiled Zod validation caching.
+ */
+export class PostgresDrizzleAdapter {
+    connectionString;
+    name = 'postgres-drizzle';
+    pool;
+    db;
+    cache;
+    tables = {};
+    configs = {};
+    // Registry of tenant connection pools to dynamically switch on-the-fly
+    tenantPools = {};
+    // Built-in system tables defined via Drizzle
+    systemTables = {
+        auditLog: pgTable('audit_logs', {
+            id: uuid('id').defaultRandom().primaryKey(),
+            timestamp: timestamp('timestamp').defaultNow().notNull(),
+            collectionName: text('collection_name').notNull(),
+            documentId: text('document_id'),
+            userId: text('user_id'),
+            userEmail: text('user_email'),
+            userName: text('user_name'),
+            action: text('action').notNull(),
+            changes: jsonb('changes'),
+            ip: text('ip'),
+            userAgent: text('user_agent'),
+            status: text('status'),
+            resource: text('resource'),
+            siteId: text('site_id'),
+            hash: text('hash'),
+            previousHash: text('previous_hash'),
+        }),
+        version: pgTable('versions', {
+            id: uuid('id').defaultRandom().primaryKey(),
+            timestamp: timestamp('timestamp').defaultNow().notNull(),
+            collectionName: text('collection_name').notNull(),
+            collectionSlug: text('collection_slug').notNull(),
+            documentId: text('document_id').notNull(),
+            snapshot: jsonb('snapshot').notNull(),
+            delta: jsonb('delta'),
+            createdBy: text('created_by').notNull(),
+        }),
+        flows: pgTable('flows', {
+            id: uuid('id').defaultRandom().primaryKey(),
+            name: text('name').notNull(),
+            description: text('description'),
+            active: boolean('active').default(false).notNull(),
+            trigger: jsonb('trigger').notNull(),
+            steps: jsonb('steps').notNull(),
+            createdAt: timestamp('created_at').defaultNow().notNull(),
+            updatedAt: timestamp('updated_at').defaultNow().notNull(),
+        }),
+        passwordResets: pgTable('z_password_resets', {
+            id: uuid('id').defaultRandom().primaryKey(),
+            userId: text('user_id').notNull(),
+            token: text('token').notNull(),
+            expiresAt: timestamp('expires_at').notNull(),
+            used: boolean('used').default(false).notNull(),
+        }),
+        migrations: pgTable('z_migrations', {
+            id: uuid('id').defaultRandom().primaryKey(),
+            name: text('name').unique().notNull(),
+            batch: integer('batch').notNull(),
+            executedAt: timestamp('executed_at').defaultNow().notNull(),
+        }),
+        webhookDelivery: pgTable('z_webhook_deliveries', {
+            id: uuid('id').defaultRandom().primaryKey(),
+            webhookId: text('webhook_id'),
+            timestamp: timestamp('timestamp').defaultNow().notNull(),
+            collectionSlug: text('collection_slug'),
+            event: text('event').notNull(),
+            url: text('url').notNull(),
+            payload: jsonb('payload'),
+            success: boolean('success').notNull(),
+            responseStatus: integer('response_status'),
+        }),
+        settings: pgTable('z_settings', {
+            id: uuid('id').defaultRandom().primaryKey(),
+            siteName: text('site_name').default('Zenith CMS'),
+            publicUrl: text('public_url'), // No default — must be set explicitly per deployment
+            maintenanceMode: boolean('maintenance_mode').default(false),
+            enableDrafts: boolean('enable_drafts').default(true),
+            defaultLocale: text('default_locale').default('en'),
+            allowedOrigins: jsonb('allowed_origins'),
+            jwtExpiresIn: text('jwt_expires_in').default('7d'),
+            passwordMinLength: integer('password_min_length').default(8),
+            rateLimitWindow: integer('rate_limit_window').default(15),
+            rateLimitMax: integer('rate_limit_max').default(100),
+            customCSS: text('custom_css').default(''),
+        }),
+        collections: pgTable('z_collections', {
+            id: uuid('id').defaultRandom().primaryKey(),
+            name: text('name').notNull(),
+            slug: text('slug').unique().notNull(),
+            labels: jsonb('labels'),
+            drafts: boolean('drafts').default(false).notNull(),
+            timestamps: boolean('timestamps').default(true).notNull(),
+            fields: jsonb('fields').notNull(),
+            createdAt: timestamp('created_at').defaultNow().notNull(),
+            updatedAt: timestamp('updated_at').defaultNow().notNull(),
+        }),
+        presence: pgTable('z_presence', {
+            id: uuid('id').defaultRandom().primaryKey(),
+            userId: text('user_id').notNull(),
+            email: text('email').notNull(),
+            collectionName: text('collection_name').notNull(),
+            documentId: text('document_id').notNull(),
+            lastActive: bigint('last_active', { mode: 'number' }).notNull(),
+        }),
+        sites: pgTable('z_sites', {
+            id: uuid('id').defaultRandom().primaryKey(),
+            name: text('name').notNull(),
+            slug: text('slug').unique().notNull(),
+            icon: text('icon').default(''),
+            description: text('description'),
+            ownerId: text('owner_id').notNull(),
+            workspaceId: text('workspace_id'),
+            members: jsonb('members').default([]),
+            collections: jsonb('collections').default([]),
+            globals: jsonb('globals').default([]),
+            billingEnabled: boolean('billing_enabled').default(false),
+            stripePublicKey: text('stripe_public_key'),
+            stripeSecretKey: text('stripe_secret_key'),
+            stripeWebhookSecret: text('stripe_webhook_secret'),
+            currency: text('currency').default('USD'),
+            pricingPlans: jsonb('pricing_plans').default([]),
+            createdAt: timestamp('created_at').defaultNow().notNull(),
+            updatedAt: timestamp('updated_at').defaultNow().notNull(),
+        }),
+        workspaces: pgTable('z_workspaces', {
+            id: uuid('id').defaultRandom().primaryKey(),
+            name: text('name').notNull(),
+            slug: text('slug').unique().notNull(),
+            ownerId: text('owner_id').notNull(),
+            members: jsonb('members').default([]),
+            createdAt: timestamp('created_at').defaultNow().notNull(),
+            updatedAt: timestamp('updated_at').defaultNow().notNull(),
+        }),
+        locks: pgTable('z_locks', {
+            id: uuid('id').defaultRandom().primaryKey(),
+            collectionName: text('collection_name').notNull(),
+            documentId: text('document_id').notNull(),
+            siteId: text('site_id'),
+            lockedBy: text('locked_by').notNull(),
+            lockedByEmail: text('locked_by_email').notNull(),
+            lockedAt: timestamp('locked_at').defaultNow().notNull(),
+            lockExpiresAt: timestamp('lock_expires_at').notNull(),
+        }),
+        webhookConfigs: pgTable('z_webhook_configs', {
+            id: uuid('id').defaultRandom().primaryKey(),
+            url: text('url').notNull(),
+            secret: text('secret'),
+            events: jsonb('events').notNull().default([]),
+            enabled: boolean('enabled').default(true).notNull(),
+            createdAt: timestamp('created_at').defaultNow().notNull(),
+            updatedAt: timestamp('updated_at').defaultNow().notNull(),
+        }),
+        redirects: pgTable('z_redirects', {
+            id: uuid('id').defaultRandom().primaryKey(),
+            from: text('from').notNull(),
+            to: text('to').notNull(),
+            type: text('type').default('301').notNull(),
+            siteId: text('site_id'),
+            hits: integer('hits').default(0).notNull(),
+            lastHitAt: timestamp('last_hit_at'),
+            createdBy: text('created_by'),
+            createdAt: timestamp('created_at').defaultNow().notNull(),
+        }),
+        releases: pgTable('z_releases', {
+            id: uuid('id').defaultRandom().primaryKey(),
+            name: text('name').notNull(),
+            description: text('description').default(''),
+            documents: jsonb('documents').default([]).notNull(),
+            status: text('status').notNull().default('pending'),
+            scheduledAt: timestamp('scheduled_at'),
+            publishedAt: timestamp('published_at'),
+            publishedBy: text('published_by'),
+            failureReason: text('failure_reason'),
+            siteId: text('site_id'),
+            createdBy: text('created_by'),
+            createdAt: timestamp('created_at').defaultNow().notNull(),
+            updatedAt: timestamp('updated_at').defaultNow().notNull(),
+        }),
+        plugins: pgTable('z_plugins', {
+            id: text('id').primaryKey(),
+            name: text('name').notNull(),
+            version: text('version').default('1.0.0'),
+            description: text('description').default(''),
+            author: text('author').default(''),
+            homepage: text('homepage').default(''),
+            packageName: text('package_name').default(''),
+            configSchema: jsonb('config_schema').default({}),
+            config: jsonb('config').default({}),
+            enabled: boolean('enabled').default(true).notNull(),
+            installedAt: timestamp('installed_at').defaultNow().notNull(),
+            updatedAt: timestamp('updated_at').defaultNow().notNull(),
+        }),
+    };
+    constructor(connectionString) {
+        this.connectionString = connectionString;
+        this.cache = createCacheLayer('PostgresDrizzleAdapter');
+        logger.info('PostgresDrizzleAdapter: Zod Parser Cache pre-allocated for speed.');
+        // Configure connection pooling (configurable via env)
+        const poolMax = parseInt(process.env.POSTGRES_POOL_MAX || '20', 10);
+        const poolIdleTimeout = parseInt(process.env.POSTGRES_POOL_IDLE_TIMEOUT || '30000', 10);
+        const poolConnectionTimeout = parseInt(process.env.POSTGRES_POOL_CONNECT_TIMEOUT || '2000', 10);
+        const poolSslRejectUnauthorized = process.env.POSTGRES_SSL_REJECT_UNAUTHORIZED || 'true';
+        const poolOptions = {
+            connectionString: this.connectionString,
+            max: poolMax,
+            idleTimeoutMillis: poolIdleTimeout,
+            connectionTimeoutMillis: poolConnectionTimeout,
+        };
+        // Enable SSL when POSTGRES_URI contains sslmode=require or when explicitly configured
+        if (process.env.POSTGRES_SSL_ENABLED === 'true' || this.connectionString.includes('sslmode=require')) {
+            poolOptions.ssl = {
+                rejectUnauthorized: poolSslRejectUnauthorized !== 'false',
+            };
+        }
+        this.pool = new Pool(poolOptions);
+        this.db = drizzle(this.pool);
+        logger.info('PostgresDrizzleAdapter: Initialized successfully with connection pooling');
+    }
+    /**
+     * Executes a database operation within a tenant-isolated RLS context.
+     * If siteId is provided, it begins a transaction, sets the local config parameter,
+     * and yields the transaction object.
+     */
+    async runWithTenantContext(siteId, operation) {
+        if (!siteId) {
+            return operation(this.db);
+        }
+        return await this.db.transaction(async (tx) => {
+            // Inject hardware-level tenant isolation for this transaction
+            await tx.execute(sql `SET LOCAL app.site_id = ${siteId}`);
+            return await operation(tx);
+        });
+    }
+    async registerTenant(tenantId, tenantConnectionString) {
+        if (this.tenantPools[tenantId]) {
+            return;
+        }
+        logger.info(`PostgresDrizzleAdapter: Dynamically provisioning connection pool for tenant [${tenantId}]`);
+        const pool = new Pool({
+            connectionString: tenantConnectionString,
+            max: 10,
+            idleTimeoutMillis: 30000,
+            connectionTimeoutMillis: 2000,
+        });
+        const db = drizzle(pool);
+        const client = await pool.connect();
+        client.release();
+        this.tenantPools[tenantId] = { pool, db };
+        await this._ensureSystemTables(db);
+    }
+    getNativeClient() {
+        return this.db;
+    }
+    async executeRaw(query, params) {
+        if (params) {
+            // Very naive parameter binding for raw execute escape hatch, 
+            // primarily used for simple schema queries in migrations.
+            return await this.db.execute(sql.raw(query));
+        }
+        return await this.db.execute(sql.raw(query));
+    }
+    getDbClient(options) {
+        const tenantId = options?.tenantId || options?.siteId;
+        if (tenantId && this.tenantPools[tenantId]) {
+            return this.tenantPools[tenantId].db;
+        }
+        return this.db;
+    }
+    async connect() {
+        const maxRetries = 5;
+        const retryDelay = 3000;
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                const client = await this.pool.connect();
+                client.release();
+                logger.info('PostgresDrizzleAdapter: Connected to PostgreSQL');
+                await this._ensureSystemTables();
+                return;
+            }
+            catch (error) {
+                logger.error({ attempt, error: error.message }, 'PostgresDrizzleAdapter: Connection failed');
+                if (attempt < maxRetries) {
+                    logger.info(`Retrying PostgreSQL connection in ${retryDelay}ms...`);
+                    await new Promise((resolve) => setTimeout(resolve, retryDelay));
+                }
+                else {
+                    throw error;
+                }
+            }
+        }
+    }
+    async disconnect() {
+        for (const [tenantId, tenant] of Object.entries(this.tenantPools)) {
+            await tenant.pool.end();
+            logger.info(`PostgresDrizzleAdapter: Disconnected tenant [${tenantId}] pool`);
+        }
+        await this.pool.end();
+        logger.info('PostgresDrizzleAdapter: Disconnected');
+    }
+    getHealth() {
+        if (this.pool.totalCount === 0)
+            return 'disconnected';
+        return this.pool.idleCount > 0 ? 'ok' : 'connecting';
+    }
+    async _ensureSystemTables(db = this.db) {
+        let acquired = false;
+        try {
+            await db.execute(sql `SELECT pg_advisory_lock(99999)`);
+            acquired = true;
+        }
+        catch (err) {
+            logger.warn({ err: err.message }, 'PostgresDrizzleAdapter: System tables advisory lock acquisition failed/timed out. Proceeding without lock.');
+        }
+        try {
+            for (const table of Object.values(this.systemTables)) {
+                const config = getTableConfig(table);
+                const colDefs = config.columns.map((col) => {
+                    let type = 'TEXT';
+                    if (col.columnType.includes('UUID'))
+                        type = 'UUID';
+                    else if (col.columnType.includes('Timestamp'))
+                        type = 'TIMESTAMP';
+                    else if (col.columnType.includes('Text'))
+                        type = 'TEXT';
+                    else if (col.columnType.includes('Jsonb'))
+                        type = 'JSONB';
+                    else if (col.columnType.includes('Boolean'))
+                        type = 'BOOLEAN';
+                    else if (col.columnType.includes('Integer'))
+                        type = 'INTEGER';
+                    else if (col.columnType.includes('BigInt'))
+                        type = 'BIGINT';
+                    let def = `${col.name} ${type}`;
+                    if (col.primary)
+                        def += ' PRIMARY KEY';
+                    if (col.default !== undefined) {
+                        if (typeof col.default === 'string')
+                            def += ` DEFAULT '${col.default}'`;
+                        else
+                            def += ` DEFAULT ${col.default}`;
+                    }
+                    else if (col.defaultFn || col.hasDefault) {
+                        if (col.name === 'id' && type === 'UUID')
+                            def += ' DEFAULT gen_random_uuid()';
+                        else if (['timestamp', 'created_at', 'updated_at', 'executed_at'].includes(col.name))
+                            def += ' DEFAULT NOW()';
+                    }
+                    if (col.notNull)
+                        def += ' NOT NULL';
+                    if (col.isUnique)
+                        def += ' UNIQUE';
+                    return def;
+                });
+                await db.execute(sql.raw(`CREATE TABLE IF NOT EXISTS ${config.name} (\n  ${colDefs.join(',\n  ')}\n);`));
+            }
+            // Special handling for RLS on audit logs
+            await db.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_audit_collection ON audit_logs(collection_name);`));
+            await db.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_logs(timestamp);`));
+            await db.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_audit_site ON audit_logs(site_id);`));
+            await db.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_logs(action);`));
+            await db.execute(sql.raw(`ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;`));
+            await db.execute(sql.raw(`DROP POLICY IF EXISTS tenant_isolation_policy ON audit_logs;`));
+            await db.execute(sql.raw(`CREATE POLICY tenant_isolation_policy ON audit_logs FOR ALL USING (site_id = current_setting('app.site_id', true) OR current_setting('app.site_id', true) = '' OR current_setting('app.site_id', true) IS NULL OR site_id IS NULL);`));
+            await db.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_versions_doc ON versions(document_id);`));
+            await db.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_flows_active ON flows(active);`));
+            await db.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_resets_token ON z_password_resets(token);`));
+            await db.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_migrations_name ON z_migrations(name);`));
+            await db.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_event ON z_webhook_deliveries(event);`));
+            await db.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_webhook_configs_url ON z_webhook_configs(url);`));
+            await db.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_schemas_slug ON z_schemas(slug);`));
+            await db.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_campaigns_status ON z_campaigns(status);`));
+        }
+        finally {
+            if (acquired) {
+                try {
+                    await db.execute(sql `SELECT pg_advisory_unlock(99999)`);
+                }
+                catch (err) {
+                    logger.error({ err: err.message }, 'PostgresDrizzleAdapter: Failed to release advisory lock');
+                }
+            }
+        }
+    }
+    mapFieldToDrizzleColumn(field) {
+        if (field.localized) {
+            return jsonb(field.name);
+        }
+        let col;
+        switch (field.type) {
+            case 'number':
+                col = integer(field.name);
+                break;
+            case 'checkbox':
+            case 'boolean':
+                col = boolean(field.name);
+                break;
+            case 'date':
+                col = timestamp(field.name);
+                break;
+            case 'richtext':
+                col = field.format === 'json' ? jsonb(field.name) : text(field.name);
+                break;
+            case 'json':
+            case 'array':
+            case 'group':
+            case 'blocks':
+                col = jsonb(field.name);
+                break;
+            case 'relation':
+                if (field.hasMany) {
+                    col = jsonb(field.name);
+                }
+                else {
+                    col = text(field.name);
+                }
+                break;
+            case 'media':
+                col = jsonb(field.name);
+                break;
+            case 'code':
+            case 'radio':
+                col = text(field.name);
+                break;
+            case 'collapsible':
+            case 'join':
+            case 'point':
+                col = jsonb(field.name);
+                break;
+            case 'row':
+            case 'ui':
+                // Layout/presentational fields — no DB column
+                return undefined;
+            default:
+                col = text(field.name);
+        }
+        if (field.unique)
+            col = col.unique();
+        if (field.required && !field.localized)
+            col = col.notNull();
+        return col;
+    }
+    mapFieldToSqlType(field) {
+        if (field.localized)
+            return 'JSONB';
+        switch (field.type) {
+            case 'number':
+                return 'INTEGER';
+            case 'checkbox':
+            case 'boolean':
+                return 'BOOLEAN';
+            case 'date':
+                return 'TIMESTAMP';
+            case 'richtext':
+                return field.format === 'json' ? 'JSONB' : 'TEXT';
+            case 'json':
+            case 'array':
+            case 'group':
+            case 'blocks':
+                return 'JSONB';
+            case 'relation':
+                return field.hasMany ? 'JSONB' : 'TEXT';
+            case 'media':
+                return 'JSONB';
+            case 'code':
+            case 'radio':
+                return 'TEXT';
+            case 'collapsible':
+            case 'join':
+            case 'point':
+                return 'JSONB';
+            case 'row':
+            case 'ui':
+                return 'SKIP';
+            default:
+                return 'TEXT';
+        }
+    }
+    async registerCollection(config, db = this.db) {
+        logger.info(`PostgresDrizzleAdapter: Dynamic Column Mapping for ${config.slug}`);
+        this.configs[config.slug] = config;
+        const columns = {
+            id: text('id').primaryKey(),
+            createdAt: timestamp('created_at').defaultNow().notNull(),
+            updatedAt: timestamp('updated_at').defaultNow().notNull(),
+        };
+        if (config.drafts) {
+            columns['status'] = text('status').default('published');
+        }
+        if (config.softDelete) {
+            columns['deletedAt'] = timestamp('deleted_at');
+        }
+        for (const field of config.fields) {
+            if (field.type === 'relation' && field.junctionTable) {
+                continue;
+            }
+            // Layout/presentational fields (row, ui) and virtual fields have no DB column
+            if (field.type === 'row' || field.type === 'ui' || field.virtual) {
+                continue;
+            }
+            columns[field.name] = this.mapFieldToDrizzleColumn(field);
+        }
+        this.tables[config.slug] = pgTable(config.slug, columns);
+        if (process.env.DISABLE_AUTO_MIGRATIONS !== 'true') {
+            if (process.env.ZENITH_AUTO_MIGRATE !== 'false') {
+                await this._runAutoMigrations(config, db);
+            }
+            for (const tenant of Object.values(this.tenantPools)) {
+                try {
+                    if (process.env.ZENITH_AUTO_MIGRATE !== 'false') {
+                        await this._runAutoMigrations(config, tenant.db);
+                    }
+                }
+                catch (err) {
+                    logger.error({ err: err.message }, `PostgresDrizzleAdapter: Tenant migration failed for ${config.slug}`);
+                }
+            }
+        }
+    }
+    async getExistingCollections() {
+        const result = await this.db.execute(sql `
+      SELECT table_name 
+      FROM information_schema.tables 
+      WHERE table_schema = 'public'
+    `);
+        return (result.rows || []).map((r) => r.table_name);
+    }
+    async _runAutoMigrations(config, db = this.db) {
+        const isValidIdentifier = (id) => /^[a-zA-Z0-9_]+$/.test(id);
+        if (!isValidIdentifier(config.slug)) {
+            throw new Error(`Invalid table name identifier: ${config.slug}`);
+        }
+        for (const field of config.fields) {
+            if (!isValidIdentifier(field.name)) {
+                throw new Error(`Invalid column name identifier: ${field.name} on collection ${config.slug}`);
+            }
+        }
+        let acquired = false;
+        try {
+            await db.execute(sql `SELECT pg_advisory_lock(99999)`);
+            acquired = true;
+        }
+        catch (err) {
+            logger.warn({ err: err.message }, 'PostgresDrizzleAdapter: Auto-migration advisory lock acquisition failed/timed out. Proceeding without lock.');
+        }
+        try {
+            let createSql = `CREATE TABLE IF NOT EXISTS "${config.slug}" (\n  "id" TEXT PRIMARY KEY`;
+            createSql += `,\n  "created_at" TIMESTAMP DEFAULT NOW() NOT NULL`;
+            createSql += `,\n  "updated_at" TIMESTAMP DEFAULT NOW() NOT NULL`;
+            if (config.drafts) {
+                createSql += `,\n  "status" TEXT DEFAULT 'published'`;
+            }
+            if (config.softDelete) {
+                createSql += `,\n  "deleted_at" TIMESTAMP`;
+            }
+            for (const field of config.fields) {
+                if (field.type === 'relation' && field.junctionTable) {
+                    continue;
+                }
+                // Layout/presentational and virtual fields have no DB column
+                if (field.type === 'row' || field.type === 'ui' || field.virtual) {
+                    continue;
+                }
+                const sqlType = this.mapFieldToSqlType(field);
+                createSql += `,\n  "${field.name}" ${sqlType}`;
+                if (field.unique)
+                    createSql += ' UNIQUE';
+                if (field.required)
+                    createSql += ' NOT NULL';
+            }
+            createSql += `\n);`;
+            await db.execute(sql.raw(createSql));
+            const result = await db.execute(sql `
+        SELECT column_name FROM information_schema.columns
+        WHERE table_name = ${config.slug};
+      `);
+            const existingCols = (result.rows || []).map((r) => r.column_name);
+            if (config.softDelete && !existingCols.includes('deleted_at')) {
+                logger.info(`PostgresDrizzleAdapter: Auto-migrating ADD COLUMN "deleted_at" to "${config.slug}"`);
+                await db.execute(sql.raw(`ALTER TABLE "${config.slug}" ADD COLUMN "deleted_at" TIMESTAMP`));
+            }
+            for (const field of config.fields) {
+                if (field.type === 'relation' && field.junctionTable) {
+                    continue;
+                }
+                if (field.type === 'row' || field.type === 'ui' || field.virtual) {
+                    continue;
+                }
+                if (!existingCols.includes(field.name)) {
+                    logger.info(`PostgresDrizzleAdapter: Auto-migrating ADD COLUMN "${field.name}" to "${config.slug}"`);
+                    const sqlType = this.mapFieldToSqlType(field);
+                    let alterSql = `ALTER TABLE "${config.slug}" ADD COLUMN "${field.name}" ${sqlType}`;
+                    if (field.unique)
+                        alterSql += ' UNIQUE';
+                    if (field.required && !field.localized) {
+                        const countRes = await db.execute(sql.raw(`SELECT count(*) as c FROM "${config.slug}"`));
+                        const count = parseInt(String(countRes.rows[0].c), 10);
+                        if (count === 0) {
+                            alterSql += ' NOT NULL';
+                        }
+                        else {
+                            logger.warn(`PostgresDrizzleAdapter: Bypassing NOT NULL for new column "${field.name}" because table "${config.slug}" contains ${count} existing rows. Backfill data before enforcing constraint.`);
+                        }
+                    }
+                    await db.execute(sql.raw(alterSql));
+                }
+            }
+            for (const field of config.fields) {
+                if (field.type === 'relation' && field.junctionTable) {
+                    continue;
+                }
+                if (field.type === 'row' || field.type === 'ui' || field.virtual) {
+                    continue;
+                }
+                if (field.unique ||
+                    field.index ||
+                    field.searchable ||
+                    field.indexed) {
+                    logger.info(`PostgresDrizzleAdapter: Auto-creating index for "${field.name}" on "${config.slug}"`);
+                    const indexName = `idx_${config.slug}_${field.name}`;
+                    let indexSql;
+                    if (field.localized ||
+                        field.type === 'json' ||
+                        field.type === 'array' ||
+                        field.type === 'group' ||
+                        field.type === 'blocks') {
+                        indexSql = `CREATE INDEX IF NOT EXISTS "${indexName}" ON "${config.slug}" USING gin ("${field.name}");`;
+                    }
+                    else {
+                        indexSql = `CREATE INDEX IF NOT EXISTS "${indexName}" ON "${config.slug}" ("${field.name}");`;
+                    }
+                    try {
+                        await db.execute(sql.raw(indexSql));
+                    }
+                    catch (err) {
+                        logger.warn({ error: err.message }, `PostgresDrizzleAdapter: Index creation skipped or failed for "${indexName}"`);
+                    }
+                }
+            }
+            // Process junction tables for relation fields
+            for (const field of config.fields) {
+                if (field.type === 'relation' && field.junctionTable) {
+                    const junctionTable = field.junctionTable;
+                    if (!isValidIdentifier(junctionTable)) {
+                        throw new Error(`Invalid junction table name identifier: ${junctionTable}`);
+                    }
+                    let createJunctionSql = `CREATE TABLE IF NOT EXISTS "${junctionTable}" (
+            "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            "source_id" TEXT NOT NULL,
+            "target_id" TEXT NOT NULL,
+            "position" INTEGER NOT NULL DEFAULT 0,
+            "relation_to" TEXT`;
+                    const pivotFields = field.pivotFields || [];
+                    for (const pf of pivotFields) {
+                        if (!isValidIdentifier(pf.name)) {
+                            throw new Error(`Invalid pivot column name identifier: ${pf.name} on junction table ${junctionTable}`);
+                        }
+                        const sqlType = this.mapFieldToSqlType(pf);
+                        createJunctionSql += `,\n  "${pf.name}" ${sqlType}`;
+                        if (pf.unique)
+                            createJunctionSql += ' UNIQUE';
+                        if (pf.required)
+                            createJunctionSql += ' NOT NULL';
+                    }
+                    createJunctionSql += `\n);`;
+                    await db.execute(sql.raw(createJunctionSql));
+                    const sourceIdxName = `idx_${junctionTable}_source_id`;
+                    const targetIdxName = `idx_${junctionTable}_target_id`;
+                    const posIdxName = `idx_${junctionTable}_position`;
+                    await db.execute(sql.raw(`CREATE INDEX IF NOT EXISTS "${sourceIdxName}" ON "${junctionTable}" ("source_id");`));
+                    await db.execute(sql.raw(`CREATE INDEX IF NOT EXISTS "${targetIdxName}" ON "${junctionTable}" ("target_id");`));
+                    await db.execute(sql.raw(`CREATE INDEX IF NOT EXISTS "${posIdxName}" ON "${junctionTable}" ("source_id", "position");`));
+                    const jResult = await db.execute(sql `
+            SELECT column_name FROM information_schema.columns
+            WHERE table_name = ${junctionTable};
+          `);
+                    const existingJCols = (jResult.rows || []).map((r) => r.column_name);
+                    // Always ensure position + relation_to columns exist
+                    for (const [col, type] of [['position', 'INTEGER NOT NULL DEFAULT 0'], ['relation_to', 'TEXT']]) {
+                        if (!existingJCols.includes(col)) {
+                            logger.info(`PostgresDrizzleAdapter: Auto-migrating ADD COLUMN "${col}" to junction table "${junctionTable}"`);
+                            await db.execute(sql.raw(`ALTER TABLE "${junctionTable}" ADD COLUMN "${col}" ${type}`));
+                        }
+                    }
+                    for (const pf of pivotFields) {
+                        if (!existingJCols.includes(pf.name)) {
+                            logger.info(`PostgresDrizzleAdapter: Auto-migrating ADD COLUMN "${pf.name}" to junction table "${junctionTable}"`);
+                            const sqlType = this.mapFieldToSqlType(pf);
+                            let alterSql = `ALTER TABLE "${junctionTable}" ADD COLUMN "${pf.name}" ${sqlType}`;
+                            if (pf.unique)
+                                alterSql += ' UNIQUE';
+                            await db.execute(sql.raw(alterSql));
+                        }
+                    }
+                }
+            }
+        }
+        finally {
+            if (acquired) {
+                try {
+                    await db.execute(sql `SELECT pg_advisory_unlock(99999)`);
+                }
+                catch (err) {
+                    logger.error({ err: err.message }, 'PostgresDrizzleAdapter: Failed to release advisory lock');
+                }
+            }
+        }
+    }
+    getTable(collection) {
+        if (collection === 'flows')
+            return this.systemTables.flows;
+        if (collection === 'z_password_resets')
+            return this.systemTables.passwordResets;
+        if (collection === 'z_migrations')
+            return this.systemTables.migrations;
+        if (collection === 'z_settings')
+            return this.systemTables.settings;
+        if (collection === 'z_collections')
+            return this.systemTables.collections;
+        if (collection === 'z_presence')
+            return this.systemTables.presence;
+        if (collection === 'audit_logs' || collection === 'z_audit_logs')
+            return this.systemTables.auditLog;
+        if (collection === 'versions' || collection === 'z_versions')
+            return this.systemTables.version;
+        if (collection === 'z_sites' || collection === 'sites')
+            return this.systemTables.sites;
+        if (collection === 'z_workspaces' || collection === 'workspaces')
+            return this.systemTables.workspaces;
+        if (collection === 'z_locks')
+            return this.systemTables.locks;
+        if (collection === 'z_webhook_configs')
+            return this.systemTables.webhookConfigs;
+        if (collection === 'z_plugins')
+            return this.systemTables.plugins;
+        if (collection === 'z_redirects')
+            return this.systemTables.redirects;
+        if (collection === 'z_releases' || collection === 'releases')
+            return this.systemTables.releases;
+        const table = this.tables[collection];
+        if (!table)
+            throw new Error(`Collection "${collection}" not registered in PostgreSQL`);
+        return table;
+    }
+    _getCacheKey(collection, query, options) {
+        return `${collection}:${JSON.stringify(query)}:${JSON.stringify(options)}`;
+    }
+    async _invalidateCache(collection) {
+        await this.cache.invalidate(collection);
+    }
+    buildWhereClause(table, query) {
+        const ast = QueryASTParser.parse(query);
+        return this.mapAstToDrizzle(table, ast);
+    }
+    /** Inject tenant scoping into the WHERE clause to prevent cross-tenant data access */
+    tenantScope(table, where, options) {
+        const siteId = options?.siteId || options?.tenantId;
+        if (siteId && table.siteId) {
+            const siteClause = eq(table.siteId, siteId);
+            return where ? and(siteClause, where) : siteClause;
+        }
+        return where;
+    }
+    mapAstToDrizzle(table, node) {
+        if (node.type === 'field') {
+            const fieldNode = node;
+            let fieldKey = fieldNode.field;
+            if (fieldKey === '_id')
+                fieldKey = 'id';
+            else if (fieldKey === '_status')
+                fieldKey = 'status';
+            const column = table[fieldKey];
+            if (!column)
+                return undefined;
+            switch (fieldNode.operator) {
+                case 'equals':
+                    return eq(column, fieldNode.value);
+                case 'not_equals':
+                    return sql `${column} <> ${fieldNode.value}`;
+                case 'contains':
+                    return sql `${column} ILIKE ${'%' + fieldNode.value + '%'}`;
+                case 'in':
+                    return sql `${column} = ANY(${fieldNode.value})`;
+                case 'not_in':
+                    return sql `${column} <> ALL(${fieldNode.value})`;
+                case 'gt':
+                    return sql `${column} > ${fieldNode.value}`;
+                case 'gte':
+                    return sql `${column} >= ${fieldNode.value}`;
+                case 'lt':
+                    return sql `${column} < ${fieldNode.value}`;
+                case 'lte':
+                    return sql `${column} <= ${fieldNode.value}`;
+                default:
+                    return eq(column, fieldNode.value);
+            }
+        }
+        else if (node.type === 'logical') {
+            const logicalNode = node;
+            const conditions = logicalNode.children
+                .map((child) => this.mapAstToDrizzle(table, child))
+                .filter(Boolean);
+            if (conditions.length === 0)
+                return undefined;
+            if (logicalNode.operator === 'and') {
+                return and(...conditions);
+            }
+            else if (logicalNode.operator === 'or') {
+                return or(...conditions);
+            }
+        }
+        return undefined;
+    }
+    async find(collection, query, options = {}) {
+        const cacheKey = this._getCacheKey(collection, query, options);
+        const cached = await this.cache.get(cacheKey);
+        if (cached)
+            return cached;
+        const globalAot = globalThis.zenithAotBridge;
+        const queryKeys = Object.keys(query);
+        const canUseAot = queryKeys.every(k => k === 'id' || k === '_id' || k === 'siteId');
+        if (globalAot && canUseAot && globalAot.hasQuery(collection, 'find')) {
+            const table = this.getTable(collection);
+            const client = this.getDbClient(options);
+            const aotFilters = {};
+            if (query.id)
+                aotFilters.id = query.id;
+            if (query._id)
+                aotFilters.id = query._id;
+            if (query.siteId)
+                aotFilters.siteId = query.siteId;
+            const result = await globalAot.executeQuery(collection, 'find', client, table, aotFilters, options);
+            const mapped = result.map((r) => {
+                const mappedRecord = { ...r, _id: r.id };
+                if ('status' in mappedRecord) {
+                    mappedRecord._status = mappedRecord.status;
+                }
+                return mappedRecord;
+            });
+            const loaded = await this._loadJunctionIds(collection, mapped);
+            const populated = await this._populateRelations(collection, loaded, options, [collection]);
+            await this.cache.set(cacheKey, populated, collection);
+            return populated;
+        }
+        const table = this.getTable(collection);
+        const client = this.getDbClient(options);
+        let dbQuery = client.select().from(table).$dynamic();
+        let where = this.buildWhereClause(table, query);
+        where = this.tenantScope(table, where, options);
+        if (where) {
+            dbQuery = dbQuery.where(where);
+        }
+        if (options.limit) {
+            dbQuery = dbQuery.limit(options.limit);
+        }
+        else {
+            dbQuery = dbQuery.limit(100);
+        }
+        if (options.skip) {
+            dbQuery = dbQuery.offset(options.skip);
+        }
+        const result = await dbQuery;
+        const mapped = result.map((r) => {
+            const mappedRecord = { ...r, _id: r.id };
+            if ('status' in mappedRecord) {
+                mappedRecord._status = mappedRecord.status;
+            }
+            return mappedRecord;
+        });
+        const loaded = await this._loadJunctionIds(collection, mapped);
+        const populated = await this._populateRelations(collection, loaded, options, [collection]);
+        await this.cache.set(cacheKey, populated, collection);
+        return populated;
+    }
+    async findOne(collection, query, options = {}) {
+        const table = this.getTable(collection);
+        const client = this.getDbClient(options);
+        const dbQuery = this._selectWithColumns(client, table, collection, options);
+        let where = this.buildWhereClause(table, query);
+        where = this.tenantScope(table, where, options);
+        const result = await dbQuery.where(where ?? sql `1=1`).limit(1);
+        if (result.length === 0)
+            return null;
+        const r = result[0];
+        const mappedRecord = { ...r, _id: r.id };
+        if ('status' in mappedRecord) {
+            mappedRecord._status = mappedRecord.status;
+        }
+        const loaded = await this._loadJunctionIds(collection, [mappedRecord]);
+        const populated = await this._populateRelations(collection, loaded, options, [collection]);
+        return populated[0];
+    }
+    async findMany(collection, ids, options = {}) {
+        if (!ids || ids.length === 0)
+            return [];
+        const cacheKey = this._getCacheKey(collection, { id: { $in: ids } }, options);
+        const cached = await this.cache.get(cacheKey);
+        if (cached)
+            return cached;
+        const table = this.getTable(collection);
+        const client = this.getDbClient(options);
+        // In Postgres/Drizzle, 'inArray' needs the table.id column
+        // The exact column depends on the dynamic table creation, it should be table.id
+        const siteId = options?.siteId || options?.tenantId;
+        const dbQuery = this._selectWithColumns(client, table, collection, options);
+        let where = inArray(table.id, ids);
+        if (siteId && table.siteId) {
+            where = and(where, eq(table.siteId, siteId));
+        }
+        const result = await dbQuery.where(where).limit(Math.min(ids.length, 1000));
+        const mapped = result.map((r) => {
+            const mappedRecord = { ...r, _id: r.id };
+            if ('status' in mappedRecord) {
+                mappedRecord._status = mappedRecord.status;
+            }
+            return mappedRecord;
+        });
+        const loaded = await this._loadJunctionIds(collection, mapped);
+        const populated = await this._populateRelations(collection, loaded, options, [collection]);
+        await this.cache.set(cacheKey, populated, collection);
+        return populated;
+    }
+    /**
+     * Builds a Drizzle select query, optionally scoped to a subset of columns.
+     * When options.select is populated, only those columns are fetched (plus
+     * always-loaded metadata: id, createdAt, updatedAt, status).
+     */
+    _selectWithColumns(client, table, collection, options) {
+        // When populate is enabled, we need all columns to resolve relation lookups
+        const needsAll = !options.select ||
+            (options.populate &&
+                (Array.isArray(options.populate) ? options.populate.length > 0 : !!options.populate));
+        if (needsAll) {
+            return client.select().from(table).$dynamic();
+        }
+        // Column selection: extract safe column names from config
+        const config = this.configs[collection];
+        const safeCols = new Set(['id', 'created_at', 'updated_at', 'status']);
+        if (config?.fields) {
+            for (const f of config.fields) {
+                safeCols.add(f.name);
+            }
+        }
+        // Always include meta columns for the result mapper
+        const requested = Array.isArray(options.select) ? options.select : [];
+        const selectObject = requested
+            .filter((col) => safeCols.has(col))
+            .reduce((acc, col) => {
+            const mapped = col === 'id' ? table.id
+                : col === 'created_at' ? table.createdAt
+                    : col === 'updated_at' ? table.updatedAt
+                        : col === 'status' ? table.status
+                            : table[col];
+            if (mapped)
+                acc[col] = mapped;
+            return acc;
+        }, {});
+        if (Object.keys(selectObject).length === 0) {
+            return client.select().from(table).$dynamic();
+        }
+        return client.select(selectObject).from(table).$dynamic();
+    }
+    /** Maximum depth for nested relation population to prevent query explosion */
+    static MAX_POPULATE_DEPTH = 5;
+    async _populateRelations(collection, records, options, populationPath = [collection], _depth = PostgresDrizzleAdapter.MAX_POPULATE_DEPTH) {
+        if (!records || records.length === 0 || !options.populate) {
+            return records;
+        }
+        // Task 07: Depth guard — stop recursing beyond MAX_POPULATE_DEPTH
+        if (_depth <= 0) {
+            logger.debug({ collection, depth: _depth }, 'PostgresDrizzleAdapter: _populateRelations depth limit reached, skipping');
+            return records;
+        }
+        const config = this.configs[collection];
+        if (!config) {
+            return records;
+        }
+        const populateFields = (Array.isArray(options.populate) ? options.populate : [options.populate]).filter(Boolean);
+        // --- Deep nested field walker: find relation fields inside group/array/blocks containers ---
+        const allRelationFields = [];
+        const walkFields = (fields, path = '') => {
+            if (!fields)
+                return;
+            for (const f of fields) {
+                if (f.type === 'relation') {
+                    const fullPath = path ? `${path}.${f.name}` : f.name;
+                    // Check top-level population whitelist; if empty (fetch-all), include all
+                    const inWhitelist = populateFields.length === 0 || populateFields.some(p => p === fullPath || p === f.name || (path && p.startsWith(`${path}.`)));
+                    if (inWhitelist)
+                        allRelationFields.push({ containerPath: path, field: f });
+                }
+                else if ((f.type === 'group' || f.type === 'array' || f.type === 'blocks') && f.fields) {
+                    const blocks = f.type === 'blocks' && f.blocks ? f.blocks : [f];
+                    for (const block of blocks) {
+                        walkFields(block.fields, path ? `${path}.${f.name}` : f.name);
+                    }
+                }
+            }
+        };
+        walkFields(config.fields);
+        // Process each discovered relation field
+        for (const { containerPath, field: relField } of allRelationFields) {
+            const relationTo = relField.relationTo;
+            const hasMany = relField.hasMany ?? true;
+            // Polymorphic relationTo[] — flatten all IDs from { relationTo, value } pairs or bare IDs
+            const resolveIds = (val) => {
+                const ids = new Set();
+                if (!val)
+                    return ids;
+                if (Array.isArray(val)) {
+                    for (const item of val) {
+                        // Polymorphic format: { relationTo: "posts", value: "abc123" }
+                        if (item && typeof item === 'object' && 'value' in item && 'relationTo' in item) {
+                            if (item.value)
+                                ids.add(String(item.value));
+                        }
+                        else if (item) {
+                            ids.add(String(item));
+                        }
+                    }
+                }
+                else if (val && typeof val === 'object' && 'value' in val && 'relationTo' in val) {
+                    // Single polymorphic
+                    if (val.value)
+                        ids.add(String(val.value));
+                }
+                else if (typeof val === 'string') {
+                    const trimmed = val.trim();
+                    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+                        try {
+                            resolveIds(JSON.parse(trimmed)).forEach(id => ids.add(id));
+                        }
+                        catch { /* ignore */ }
+                    }
+                    else {
+                        ids.add(val);
+                    }
+                }
+                return ids;
+            };
+            const idsToFetch = new Set();
+            for (const record of records) {
+                if (containerPath) {
+                    // Navigate into nested container
+                    const parts = containerPath.split('.');
+                    let current = record;
+                    for (const p of parts) {
+                        current = current?.[p];
+                    }
+                    const nestedVal = current?.[relField.name];
+                    resolveIds(nestedVal).forEach(id => idsToFetch.add(id));
+                }
+                else {
+                    resolveIds(record[relField.name]).forEach(id => idsToFetch.add(id));
+                }
+            }
+            // Initialize default values when no IDs present
+            if (idsToFetch.size === 0) {
+                for (const record of records) {
+                    const setter = (obj) => {
+                        if (obj[relField.name] === undefined || obj[relField.name] === null) {
+                            obj[relField.name] = hasMany ? [] : null;
+                        }
+                    };
+                    if (containerPath) {
+                        const parts = containerPath.split('.');
+                        let current = record;
+                        for (const p of parts.slice(0, -1)) {
+                            current = current?.[p];
+                        }
+                        setter(current);
+                    }
+                    else {
+                        setter(record);
+                    }
+                }
+                continue;
+            }
+            // --- Circular reference protection ---
+            const targetCollections = Array.isArray(relationTo) ? relationTo : [relationTo];
+            for (const target of targetCollections) {
+                if (populationPath.includes(target)) {
+                    logger.debug(`[Population] Circular protection: skipping ${collection} → ${target}`);
+                    continue;
+                }
+                if (!this.configs[target]) {
+                    logger.debug(`[Population] Unknown collection "${target}" — skipping`);
+                    continue;
+                }
+                // Recursively populate nested relations (passes path for depth tracking)
+                const nestedPath = [...populationPath, target];
+                const relatedDocs = await this.find(target, { id: { $in: Array.from(idsToFetch) } }, { session: options.session, siteId: options.siteId });
+                // Recurse into the related docs to populate their own nested relations
+                await this._populateRelations(target, relatedDocs, options, nestedPath, _depth - 1);
+                const docMap = new Map();
+                for (const doc of relatedDocs) {
+                    docMap.set(doc.id, doc);
+                }
+                const linkMap = new Map();
+                if (relField.junctionTable) {
+                    const sourceIds = records.map(r => r.id);
+                    const pivotFields = relField.pivotFields || [];
+                    const selectCols = ['source_id', 'target_id', 'position', ...pivotFields.map((f) => `"${f.name}"`)];
+                    try {
+                        const linksResult = await this.db.execute(sql `SELECT ${sql.raw(selectCols.join(', '))} FROM ${sql.raw(`"${relField.junctionTable}"`)} WHERE source_id = ANY(${sourceIds}) ORDER BY "position" ASC NULLS LAST`);
+                        for (const link of linksResult.rows || []) {
+                            linkMap.set(`${link.source_id}_${link.target_id}`, link);
+                        }
+                    }
+                    catch (err) {
+                        logger.warn({ err: err.message }, 'Failed to fetch pivot fields for populated relation');
+                    }
+                }
+                for (const record of records) {
+                    let rec = record;
+                    if (containerPath) {
+                        const parts = containerPath.split('.');
+                        for (const p of parts.slice(0, -1)) {
+                            rec = rec?.[p];
+                        }
+                    }
+                    let val = containerPath ? rec?.[relField.name] : record[relField.name];
+                    const isPolymorphic = Array.isArray(relationTo);
+                    if (!val)
+                        val = hasMany ? [] : null;
+                    if (hasMany && Array.isArray(val)) {
+                        rec[relField.name] = val
+                            .map((idOrObj) => {
+                            // Extract ID from polymorphic or bare
+                            const id = isPolymorphic && idOrObj && typeof idOrObj === 'object' ? idOrObj.value : String(idOrObj);
+                            const doc = docMap.get(id);
+                            if (!doc)
+                                return null;
+                            if (relField.junctionTable) {
+                                const cloned = { ...doc };
+                                const link = linkMap.get(`${record.id}_${id}`);
+                                if (link) {
+                                    cloned._pivot = { ...link };
+                                    delete cloned._pivot.source_id;
+                                    delete cloned._pivot.target_id;
+                                    delete cloned._pivot.id;
+                                }
+                                return cloned;
+                            }
+                            if (isPolymorphic) {
+                                const rt = idOrObj?.relationTo || relationTo;
+                                return { relationTo: rt, value: doc };
+                            }
+                            return doc;
+                        })
+                            .filter(Boolean);
+                    }
+                    else if (!hasMany) {
+                        const id = isPolymorphic && val && typeof val === 'object' ? val.value : String(val);
+                        const doc = docMap.get(id);
+                        rec[relField.name] = doc ? (isPolymorphic ? { relationTo: relationTo, value: doc } : doc) : null;
+                    }
+                }
+            }
+        }
+        return records;
+    }
+    async _loadJunctionIds(collection, records) {
+        if (!records || records.length === 0)
+            return records;
+        const config = this.configs[collection];
+        if (!config)
+            return records;
+        const recordIds = records.map(r => r.id);
+        if (recordIds.length === 0)
+            return records;
+        for (const field of config.fields) {
+            if (field.type === 'relation' && field.junctionTable) {
+                const jTable = field.junctionTable;
+                const relationTo = field.relationTo;
+                const isPolymorphic = Array.isArray(relationTo);
+                try {
+                    // Load junction rows ordered by position (for M2M ordering)
+                    const rowsResult = await this.db.execute(sql `
+            SELECT source_id, target_id, relation_to, "position"
+            FROM ${sql.raw(`"${jTable}"`)}
+            WHERE source_id = ANY(${recordIds})
+            ORDER BY "position" ASC NULLS LAST
+          `);
+                    const rows = rowsResult.rows || [];
+                    // Build source → sorted entries map (preserving position order)
+                    const sourceToTargets = {};
+                    for (const row of rows) {
+                        if (!sourceToTargets[row.source_id])
+                            sourceToTargets[row.source_id] = [];
+                        // Polymorphic format: store { value, relationTo } or bare ID
+                        const entry = isPolymorphic
+                            ? { value: row.target_id, relationTo: row.relation_to || relationTo[0] }
+                            : row.target_id;
+                        sourceToTargets[row.source_id].push(entry);
+                    }
+                    for (const r of records) {
+                        r[field.name] = sourceToTargets[r.id] || [];
+                    }
+                }
+                catch (err) {
+                    logger.warn({ err: err.message }, `Failed to load junction IDs for ${field.name}`);
+                }
+            }
+        }
+        return records;
+    }
+    async _writeJunctionRelations(collection, id, data, executor) {
+        const config = this.configs[collection];
+        if (!config)
+            return data;
+        const updatedData = { ...data };
+        for (const field of config.fields) {
+            if (field.type === 'relation' && field.junctionTable) {
+                const jTable = field.junctionTable;
+                const relationVal = data[field.name];
+                const relationTo = field.relationTo;
+                const isPolymorphic = Array.isArray(relationTo);
+                await executor.execute(sql `DELETE FROM ${sql.raw(`"${jTable}"`)} WHERE source_id = ${id}`);
+                if (Array.isArray(relationVal)) {
+                    const pivotFields = field.pivotFields || [];
+                    let positionCounter = 0;
+                    for (const item of relationVal) {
+                        let targetId;
+                        let pivotData = {};
+                        if (typeof item === 'string') {
+                            targetId = item;
+                        }
+                        else if (item && typeof item === 'object') {
+                            // Polymorphic: { value, relationTo } or { id, ...pivot }
+                            if ('value' in item && 'relationTo' in item) {
+                                targetId = item.value;
+                            }
+                            else {
+                                targetId = item.id || item.target_id || '';
+                            }
+                            pivotData = { ...item };
+                            delete pivotData.id;
+                            delete pivotData.target_id;
+                            delete pivotData.value;
+                            delete pivotData.relationTo;
+                        }
+                        else {
+                            continue;
+                        }
+                        if (!targetId)
+                            continue;
+                        const cols = ['source_id', 'target_id', '"position"'];
+                        const vals = [id, targetId, positionCounter++];
+                        if (isPolymorphic && relationTo.length > 0) {
+                            const rt = typeof item === 'object' && 'relationTo' in item
+                                ? item.relationTo
+                                : (Array.isArray(relationTo) ? relationTo[0] : relationTo);
+                            cols.push('"relation_to"');
+                            vals.push(rt);
+                        }
+                        for (const pf of pivotFields) {
+                            const val = pivotData[pf.name];
+                            if (val !== undefined) {
+                                cols.push(`"${pf.name}"`);
+                                vals.push(val);
+                            }
+                        }
+                        const fragments = [sql `INSERT INTO ${sql.raw(`"${jTable}"`)} (${sql.raw(cols.join(', '))}) VALUES (`];
+                        vals.forEach((val, i) => {
+                            if (i > 0)
+                                fragments.push(sql `, `);
+                            fragments.push(sql `${val}`);
+                        });
+                        fragments.push(sql `)`);
+                        await executor.execute(sql `${fragments}`);
+                    }
+                }
+            }
+        }
+        return updatedData;
+    }
+    async create(collection, data, options = {}) {
+        const globalAot = globalThis.zenithAotBridge;
+        if (globalAot && globalAot.hasQuery(collection, 'create')) {
+            const table = this.getTable(collection);
+            const client = this.getDbClient(options);
+            const executor = options.session ? options.session : client;
+            const id = data.id || data._id || crypto.randomUUID();
+            const valuesToInsert = {
+                id,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+            };
+            for (const [key, val] of Object.entries(data)) {
+                let fieldKey = key;
+                if (key === '_status')
+                    fieldKey = 'status';
+                else if (key === '_id')
+                    fieldKey = 'id';
+                if (fieldKey !== 'id' && fieldKey !== '_id' && table[fieldKey] !== undefined && val !== undefined) {
+                    valuesToInsert[fieldKey] = val;
+                }
+            }
+            const doc = await globalAot.executeQuery(collection, 'create', executor, table, valuesToInsert);
+            await this._writeJunctionRelations(collection, id, data, executor);
+            await this._invalidateCache(collection);
+            const mappedRecord = { ...doc, ...data, id, _id: id };
+            if ('status' in mappedRecord) {
+                mappedRecord._status = mappedRecord.status;
+            }
+            return mappedRecord;
+        }
+        const table = this.getTable(collection);
+        const id = data.id || data._id || crypto.randomUUID();
+        const client = this.getDbClient(options);
+        const executor = options.session ? options.session : client;
+        const valuesToInsert = {
+            id,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+        };
+        for (const [key, val] of Object.entries(data)) {
+            let fieldKey = key;
+            if (key === '_status')
+                fieldKey = 'status';
+            else if (key === '_id')
+                fieldKey = 'id';
+            if (fieldKey !== 'id' && fieldKey !== '_id' && table[fieldKey] !== undefined && val !== undefined) {
+                valuesToInsert[fieldKey] = val;
+            }
+        }
+        await executor.insert(table).values(valuesToInsert);
+        await this._writeJunctionRelations(collection, id, data, executor);
+        await this._invalidateCache(collection);
+        const output = { ...valuesToInsert, ...data, _id: id };
+        if ('status' in output) {
+            output._status = output.status;
+        }
+        return output;
+    }
+    async update(collection, id, data, options = {}) {
+        const table = this.getTable(collection);
+        const client = this.getDbClient(options);
+        const executor = options.session ? options.session : client;
+        const existing = await this.findOne(collection, { id }, options);
+        if (!existing)
+            return null;
+        const mergedData = { ...existing, ...data };
+        delete mergedData.id;
+        delete mergedData._id;
+        delete mergedData.createdAt;
+        delete mergedData.updatedAt;
+        const valuesToUpdate = {
+            updatedAt: new Date(),
+        };
+        for (const [key, val] of Object.entries(mergedData)) {
+            let fieldKey = key;
+            if (key === '_status')
+                fieldKey = 'status';
+            else if (key === '_id')
+                fieldKey = 'id';
+            if (table[fieldKey] !== undefined && val !== undefined) {
+                valuesToUpdate[fieldKey] = val;
+            }
+        }
+        await executor.update(table).set(valuesToUpdate).where(eq(table.id, id));
+        await this._writeJunctionRelations(collection, id, mergedData, executor);
+        await this._invalidateCache(collection);
+        const output = { id, ...valuesToUpdate, ...mergedData, _id: id };
+        if ('status' in output) {
+            output._status = output.status;
+        }
+        return output;
+    }
+    async findOneAndUpdate(collection, query, update, options) {
+        const table = this.getTable(collection);
+        const client = this.getDbClient(options);
+        const executor = options?.session ? options.session : client;
+        let where = this.buildWhereClause(table, query);
+        where = this.tenantScope(table, where, options);
+        if (options?.returnDocument === 'after') {
+            const setData = { ...update, updatedAt: new Date() };
+            const result = await executor
+                .update(table)
+                .set(setData)
+                .where(where ?? sql `1=1`)
+                .returning();
+            const rows = result;
+            if (!rows.length)
+                return null;
+            const r = rows[0];
+            const mapped = { ...r, _id: r.id };
+            if ('status' in mapped)
+                mapped._status = mapped.status;
+            return mapped;
+        }
+        // returnDocument: 'before' or omitted — fetch before updating
+        const before = await this.findOne(collection, query, options);
+        if (!before)
+            return null;
+        await executor.update(table).set({ ...update, updatedAt: new Date() }).where(where ?? sql `1=1`);
+        return before;
+    }
+    async updateMany(collection, query, data, options = {}) {
+        const table = this.getTable(collection);
+        const client = this.getDbClient(options);
+        const executor = options.session ? options.session : client;
+        const updatePayload = {
+            updatedAt: new Date(),
+        };
+        for (const [key, val] of Object.entries(data)) {
+            let fieldKey = key;
+            if (key === '_status')
+                fieldKey = 'status';
+            else if (key === '_id')
+                fieldKey = 'id';
+            if (table[fieldKey] !== undefined && val !== undefined) {
+                updatePayload[fieldKey] = val;
+            }
+        }
+        let dbQuery = executor.update(table).set(updatePayload).$dynamic();
+        let where = this.buildWhereClause(table, query);
+        where = this.tenantScope(table, where, options);
+        if (where) {
+            dbQuery = dbQuery.where(where);
+        }
+        const result = await dbQuery.returning({ id: table.id });
+        await this._invalidateCache(collection);
+        return result.length;
+    }
+    async delete(collection, id, options = {}) {
+        const table = this.getTable(collection);
+        const client = this.getDbClient(options);
+        const executor = options.session ? options.session : client;
+        const config = this.configs[collection];
+        if (config) {
+            for (const field of config.fields) {
+                if (field.type === 'relation' && field.junctionTable) {
+                    await executor.execute(sql `DELETE FROM ${sql.raw(`"${field.junctionTable}"`)} WHERE source_id = ${id}`);
+                }
+            }
+        }
+        const result = await executor.delete(table).where(eq(table.id, id)).returning({ id: table.id });
+        await this._invalidateCache(collection);
+        return result.length > 0;
+    }
+    async deleteMany(collection, query, options = {}) {
+        const table = this.getTable(collection);
+        const client = this.getDbClient(options);
+        const executor = options.session ? options.session : client;
+        let where = this.buildWhereClause(table, query);
+        where = this.tenantScope(table, where, options);
+        let dbQuery = executor.delete(table).$dynamic();
+        if (where) {
+            dbQuery = dbQuery.where(where);
+        }
+        let ids = [];
+        try {
+            const selectQuery = executor.select({ id: table.id }).from(table).$dynamic();
+            const selectWhere = where ? selectQuery.where(where) : selectQuery;
+            const rows = await selectWhere;
+            ids = rows.map((r) => r.id);
+        }
+        catch {
+            // Ignore select failure
+        }
+        if (ids.length > 0) {
+            const config = this.configs[collection];
+            if (config) {
+                for (const field of config.fields) {
+                    if (field.type === 'relation' && field.junctionTable) {
+                        await executor.execute(sql `DELETE FROM ${sql.raw(`"${field.junctionTable}"`)} WHERE source_id = ANY(${ids})`);
+                    }
+                }
+            }
+        }
+        const result = await dbQuery.returning({ id: table.id });
+        await this._invalidateCache(collection);
+        return result.length;
+    }
+    async count(collection, query, options) {
+        const table = this.getTable(collection);
+        const client = this.getDbClient(options);
+        let dbQuery = client
+            .select({ count: sql `count(*)` })
+            .from(table)
+            .$dynamic();
+        let where = this.buildWhereClause(table, query);
+        where = this.tenantScope(table, where, options);
+        if (where) {
+            dbQuery = dbQuery.where(where);
+        }
+        const result = await dbQuery;
+        return Number(result[0]?.count || 0);
+    }
+    async aggregate(_collection, _pipeline, _options) {
+        throw new Error('Aggregation pipelines not natively supported in Postgres. Use native SQL.');
+    }
+    async transaction(fn) {
+        return this.db.transaction(async (tx) => {
+            return await fn(tx);
+        });
+    }
+    async createAuditLog(data, options) {
+        const client = this.getDbClient(options);
+        await client.insert(this.systemTables.auditLog).values({
+            collectionName: data.collectionName,
+            documentId: data.documentId,
+            userId: data.userId,
+            userEmail: data.userEmail,
+            userName: data.userName,
+            action: data.action,
+            changes: data.changes,
+            ip: data.ip,
+            userAgent: data.userAgent,
+            status: data.status,
+            resource: data.resource,
+            siteId: data.siteId,
+            hash: data.hash,
+            previousHash: data.previousHash,
+        });
+    }
+    async createVersion(data, options) {
+        const client = this.getDbClient(options);
+        await client.insert(this.systemTables.version).values({
+            collectionName: data.collectionName,
+            collectionSlug: data.collectionSlug,
+            documentId: data.documentId,
+            snapshot: data.snapshot,
+            delta: data.delta,
+            createdBy: data.createdBy,
+        });
+    }
+    async getVersions(collection, documentId, options) {
+        const table = this.systemTables.version;
+        const client = this.getDbClient(options);
+        const result = await client
+            .select()
+            .from(table)
+            .where(and(eq(table.collectionName, collection), eq(table.documentId, documentId)))
+            .orderBy(desc(table.timestamp));
+        return result.map((r) => ({
+            ...r,
+        }));
+    }
+    async createWebhookDelivery(data, options) {
+        const client = this.getDbClient(options);
+        await client.insert(this.systemTables.webhookDelivery).values({
+            webhookId: data.webhookId,
+            collectionSlug: data.collectionSlug,
+            event: data.event,
+            url: data.url,
+            payload: data.payload,
+            success: data.success,
+            responseStatus: data.responseStatus,
+        });
+    }
+    async getWebhookDeliveries(webhookId, limit = 50) {
+        const client = this.getDbClient();
+        const table = this.systemTables.webhookDelivery;
+        const docs = await client
+            .select()
+            .from(table)
+            .where(eq(table.webhookId, webhookId))
+            .orderBy(desc(table.timestamp))
+            .limit(limit);
+        return docs.map((d) => ({
+            id: d.id,
+            webhookId: d.webhookId,
+            collectionSlug: d.collectionSlug,
+            event: d.event,
+            url: d.url,
+            payload: d.payload,
+            success: d.success,
+            responseStatus: d.responseStatus,
+            timestamp: d.timestamp,
+        }));
+    }
+    async search(collection, query, fields, limit = 10, options) {
+        const table = this.getTable(collection);
+        const client = this.getDbClient(options);
+        const conditions = fields
+            .filter((f) => table[f] !== undefined)
+            .map((f) => sql `${table[f]} ILIKE ${'%' + query + '%'}`);
+        if (conditions.length === 0)
+            return [];
+        const orWhere = conditions.reduce((acc, cond, i) => i === 0 ? cond : sql `${acc} OR ${cond}`);
+        let whereClause = sql `(${orWhere})`;
+        const siteId = options?.siteId;
+        if (siteId && table.siteId !== undefined) {
+            whereClause = sql `${whereClause} AND ${table.siteId} = ${siteId}`;
+        }
+        const result = await client
+            .select()
+            .from(table)
+            .where(whereClause)
+            .limit(Math.min(limit, 50));
+        const mapped = result.map((r) => {
+            const mappedRecord = { ...r, _id: r.id };
+            if ('status' in mappedRecord) {
+                mappedRecord._status = mappedRecord.status;
+            }
+            return mappedRecord;
+        });
+        return mapped;
+    }
+}
+//# sourceMappingURL=PostgresDrizzleAdapter.js.map
