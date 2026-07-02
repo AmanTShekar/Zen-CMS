@@ -97,7 +97,7 @@ pnpm dev
 The Core API will execute on `http://localhost:3000` and the Admin Control Plane on `http://localhost:5173`.
 
 > [!IMPORTANT]  
-> When running the initial setup, a default Super Admin account will be generated. Check your terminal output for the bootstrap credentials.
+> When running the initial setup, a default Super Admin account needs to be created. Simply navigate to `http://localhost:3000/admin` in your browser and follow the beautifully designed Setup Wizard!
 
 ---
 

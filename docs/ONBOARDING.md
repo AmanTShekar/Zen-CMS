@@ -4,7 +4,15 @@ Welcome to Zenith CMS. This guide provides a high-level overview of the administ
 
 ---
 
-## 1. The Dashboard
+## 1. Initial Setup Wizard
+
+When you first launch a new Zenith CMS instance (where the database is empty), you will be greeted by the **Setup Wizard**. This interactive React UI securely provisions the initial Super Admin account.
+
+If you ever need to trigger the Setup Wizard again in a new environment, simply point your Zenith CMS `.env` to a fresh, empty database.
+
+---
+
+## 2. The Dashboard
 
 Upon authenticating, you will land on the Dashboard. This view aggregates high-level metrics for your specific tenant (`siteId`), including recent document mutations and active collaboration sessions.
 
