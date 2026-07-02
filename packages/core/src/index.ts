@@ -26,7 +26,15 @@ export { createResponse } from './api/utils'
 export { requireAuth, requireRole } from './middleware/auth'
 export { InvalidPayloadError, ServiceUnavailableError, ValidationError } from './errors'
 export { env } from './config/env'
-export { buildConfig } from './config/buildConfig'
+
+/**
+ * Helper function to build the CMS configuration with full TypeScript inference.
+ * Simply returns the config object.
+ */
+export function buildConfig(config: CMSConfig): CMSConfig {
+  return config
+}
+
 import './database/registry'
 
 // ── Middleware ───────────────────────────────────────────────────────────────
@@ -1161,3 +1169,6 @@ export * from './plugins/strapi-bridge'
 export { LicensingService } from './services/LicensingService'
 export { eventHub } from './services/event-hub'
 export type { CMSConfig, CollectionConfig, FieldConfig } from '@zenith-open/zenithcms-types'
+
+// Export Zenith as an alias for ZenithEngine for CLI compatibility
+export { ZenithEngine as Zenith }

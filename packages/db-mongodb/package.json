@@ -1,6 +1,6 @@
 ﻿{
   "name": "@zenith-open/zenithcms-db-mongodb",
-  "version": "1.0.0-beta.2",
+  "version": "1.0.0-beta.4",
   "publishConfig": {
     "access": "public"
   },
@@ -24,5 +24,6 @@
     "README.md"
   ]
 }
+
 
 

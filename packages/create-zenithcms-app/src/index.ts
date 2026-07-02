@@ -47,10 +47,10 @@ program
       type: "module", 
       scripts: { dev: "tsx src/server.ts", build: "tsc", start: "node dist/server.js" }, 
       dependencies: { 
-        "@zenith-open/zenithcms-core": "^1.0.0-beta.1", 
-        "@zenith-open/zenithcms-admin": "^1.0.0-beta.1", 
-        "@zenith-open/zenithcms-types": "^1.0.0-beta.1", 
-        "@zenith-open/zenithcms-db-mongodb": "^1.0.0-beta.1", 
+        "@zenith-open/zenithcms-core": "^1.0.0-beta.4", 
+        "@zenith-open/zenithcms-admin": "^1.0.0-beta.4", 
+        "@zenith-open/zenithcms-types": "^1.0.0-beta.4", 
+        "@zenith-open/zenithcms-db-mongodb": "^1.0.0-beta.4", 
         tsx: "^4.19.0", 
         typescript: "^5.4.5" 
       } 
