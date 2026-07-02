@@ -5,6 +5,7 @@ import path from "path"
 import fs from "fs"
 import { execSync } from "child_process"
 import readline from "readline"
+import ora from "ora"
 
 const program = new Command()
 
@@ -57,12 +58,7 @@ program
     }
 
     // Start loading animation
-    const frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
-    let i = 0
-    const spinner = setInterval(() => {
-      process.stdout.write(`\r${chalk.cyan(frames[i])} Scaffold Zenith CMS architecture...`)
-      i = (i + 1) % frames.length
-    }, 80)
+    const spinner = ora('Scaffolding Zenith CMS architecture...').start()
 
     // Simulate a slight delay so the user can enjoy the premium loading effect
     await new Promise(r => setTimeout(r, 1500))
@@ -243,21 +239,16 @@ export default config
     fs.writeFileSync(path.join(projectPath, ".gitignore"), "node_modules\ndist\n.env\n*.log\n")
     fs.writeFileSync(path.join(projectPath, "README.md"), "# "+path.basename(projectPath)+"\n\nnpm run dev\n\nAdmin: http://localhost:3000/admin\n")
     
-    clearInterval(spinner)
-    process.stdout.write(`\r${chalk.green("✔")} Scaffold Zenith CMS architecture...\n\n`)
+    spinner.succeed('Scaffolding Zenith CMS architecture complete!')
+    console.log('') // blank line for spacing
 
-    const installSpinner = setInterval(() => {
-      process.stdout.write(`\r${chalk.cyan(frames[i])} Installing dependencies (this may take a minute)...`)
-      i = (i + 1) % frames.length
-    }, 80)
+    const installSpinner = ora('Installing dependencies (this may take a minute)...').start()
 
     try {
       execSync("npm install --no-audit --no-fund --loglevel=error --silent", { stdio: "ignore", cwd: projectPath })
-      clearInterval(installSpinner)
-      process.stdout.write(`\r${chalk.green("✔")} Dependencies installed successfully!                   \n`)
+      installSpinner.succeed('Dependencies installed successfully!')
     } catch (e) {
-      clearInterval(installSpinner)
-      process.stdout.write(`\r${chalk.red("✖")} Failed to install dependencies automatically.          \n`)
+      installSpinner.fail('Failed to install dependencies automatically.')
       console.log(chalk.red("You can run 'npm install' manually inside the folder."))
     }
 

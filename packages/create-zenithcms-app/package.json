@@ -1,6 +1,6 @@
-﻿{
+{
   "name": "create-zenithcms-app",
-  "version": "1.0.0-beta.9",
+  "version": "1.0.0-beta.10",
   "publishConfig": {
     "access": "public"
   },
@@ -25,6 +25,7 @@
     "README.md"
   ]
 }
+
 
 
 
