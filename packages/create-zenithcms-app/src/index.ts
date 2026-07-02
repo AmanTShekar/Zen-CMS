@@ -3,6 +3,7 @@ import { Command } from "commander"
 import chalk from "chalk"
 import path from "path"
 import fs from "fs"
+import crypto from "crypto"
 import { execSync } from "child_process"
 import readline from "readline"
 import ora from "ora"
@@ -232,7 +233,7 @@ export default config
     }
     fs.writeFileSync(path.join(projectPath, "tsconfig.json"), JSON.stringify(tsconfig, null, 2))
     
-    const rand32 = () => require('crypto').randomBytes(24).toString('hex')
+    const rand32 = () => crypto.randomBytes(24).toString('hex')
     fs.writeFileSync(path.join(projectPath, ".env"), ["PORT=3000",`JWT_SECRET=${rand32()}`,`JWT_REFRESH_SECRET=${rand32()}`,`COOKIE_SECRET=${rand32()}`,"INITIAL_ADMIN_EMAIL="+adminEmail,"INITIAL_ADMIN_PASSWORD="+adminPassword,"DATABASE_URL=mongodb://localhost:27017/zenith","DATABASE_TYPE=mongodb"].join("\n"))
     
     fs.writeFileSync(path.join(projectPath, ".gitignore"), "node_modules\ndist\n.env\n*.log\n")
