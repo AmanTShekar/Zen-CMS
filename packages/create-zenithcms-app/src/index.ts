@@ -35,14 +35,14 @@ program
       const p = await question("? Admin password: "); if (p) adminPassword = p
     }
     
-    fs.mkdirSync(projectPath, { recursive: true })
+    fs.mkdirSync(path.join(projectPath, "src/collections"), { recursive: true })
     
     const pkg = { 
       name: path.basename(projectPath), 
       version: "0.1.0", 
       private: true, 
       type: "module", 
-      scripts: { dev: "tsx server.ts", build: "tsc", start: "node dist/server.js" }, 
+      scripts: { dev: "tsx src/server.ts", build: "tsc", start: "node dist/server.js" }, 
       dependencies: { 
         "@zenith-open/zenithcms-core": "^1.0.0-beta.1", 
         "@zenith-open/zenithcms-admin": "^1.0.0-beta.1", 
@@ -67,34 +67,68 @@ program
     fs.writeFileSync(path.join(projectPath, "package.json"), JSON.stringify(pkg, null, 2))
     
     const serverTs = `import { Zenith } from '@zenith-open/zenithcms-core'
+import { MongooseAdapter } from '@zenith-open/zenithcms-db-mongodb'
 import config from './zenith.config.js'
 
-const app = new Zenith({ config, port: Number(process.env.PORT) || 3000 })
-await app.start()
+async function start() {
+  const cms = new Zenith({
+    config,
+    database: new MongooseAdapter(process.env.DATABASE_URL!)
+  })
+  await cms.start(parseInt(process.env.PORT || '3000'))
+}
+start().catch(console.error)
 `
-    fs.writeFileSync(path.join(projectPath, "server.ts"), serverTs)
-    
-    const configTs = `import type { CMSConfig } from '@zenith-open/zenithcms-types'
+    fs.writeFileSync(path.join(projectPath, "src/server.ts"), serverTs)
 
-const config: CMSConfig = {
-  collections: [
-    {
-      name: 'Post',
-      slug: 'posts',
-      fields: [
-        { name: 'title', type: 'text', required: true }
-      ]
-    }
+    const usersCollection = `import type { CollectionConfig } from '@zenith-open/zenithcms-types'
+
+export const Users: CollectionConfig = {
+  name: 'User',
+  slug: 'users',
+  fields: [
+    { name: 'name', type: 'text', required: true },
+    { name: 'role', type: 'select', options: ['admin', 'editor', 'user'], required: true, defaultValue: 'user' }
   ]
 }
+`
+    fs.writeFileSync(path.join(projectPath, "src/collections/Users.ts"), usersCollection)
+
+    const postsCollection = `import type { CollectionConfig } from '@zenith-open/zenithcms-types'
+
+export const Posts: CollectionConfig = {
+  name: 'Post',
+  slug: 'posts',
+  fields: [
+    { name: 'title', type: 'text', required: true },
+    { name: 'content', type: 'textarea' },
+    { name: 'status', type: 'select', options: ['draft', 'published'], defaultValue: 'draft' }
+  ]
+}
+`
+    fs.writeFileSync(path.join(projectPath, "src/collections/Posts.ts"), postsCollection)
+
+    const configTs = `import { buildConfig } from '@zenith-open/zenithcms-core'
+import { Users } from './collections/Users.js'
+import { Posts } from './collections/Posts.js'
+
+const config = buildConfig({
+  admin: {
+    user: 'users'
+  },
+  collections: [
+    Users,
+    Posts
+  ]
+})
 
 export default config
 `
-    fs.writeFileSync(path.join(projectPath, "zenith.config.ts"), configTs)
+    fs.writeFileSync(path.join(projectPath, "src/zenith.config.ts"), configTs)
     
     const tsconfig = { 
-      compilerOptions: { target: "ES2022", module: "NodeNext", moduleResolution: "NodeNext", esModuleInterop: true, strict: true, skipLibCheck: true, outDir: "./dist" }, 
-      include: ["**/*.ts"] 
+      compilerOptions: { target: "ES2022", module: "NodeNext", moduleResolution: "NodeNext", esModuleInterop: true, strict: true, skipLibCheck: true, outDir: "./dist", rootDir: "./src" }, 
+      include: ["src/**/*"] 
     }
     fs.writeFileSync(path.join(projectPath, "tsconfig.json"), JSON.stringify(tsconfig, null, 2))
     
@@ -102,7 +136,7 @@ export default config
     fs.writeFileSync(path.join(projectPath, ".env"), ["PORT=3000","JWT_SECRET=z_"+rand(),"COOKIE_SECRET=z_"+rand(),"INITIAL_ADMIN_EMAIL="+adminEmail,"INITIAL_ADMIN_PASSWORD="+adminPassword,"DATABASE_URL=mongodb://localhost:27017/zenith","DATABASE_TYPE=mongodb"].join("\n"))
     
     fs.writeFileSync(path.join(projectPath, ".gitignore"), "node_modules\ndist\n.env\n*.log\n")
-    fs.writeFileSync(path.join(projectPath, "README.md"), "# "+path.basename(projectPath)+"\n\npnpm install && pnpm dev\n\nAdmin: http://localhost:3000/admin\n")
+    fs.writeFileSync(path.join(projectPath, "README.md"), "# "+path.basename(projectPath)+"\n\nnpm install && npm run dev\n\nAdmin: http://localhost:3000/admin\n")
     
     clearInterval(spinner)
     process.stdout.write(`\r${chalk.green("✔")} Scaffold Zenith CMS architecture...\n\n`)
