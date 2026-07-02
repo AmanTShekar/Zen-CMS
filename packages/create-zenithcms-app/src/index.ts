@@ -108,7 +108,11 @@ export const Posts: CollectionConfig = {
   slug: 'posts',
   fields: [
     { name: 'title', type: 'text', required: true },
-    { name: 'content', type: 'textarea' },
+    { name: 'slug', type: 'text', required: true, unique: true },
+    { name: 'content', type: 'richtext', required: true },
+    { name: 'publishedAt', type: 'date' },
+    { name: 'authors', type: 'relation', relationTo: 'users', hasMany: true },
+    { name: 'categories', type: 'relation', relationTo: 'categories', hasMany: true },
     { name: 'status', type: 'select', options: ['draft', 'published'], defaultValue: 'draft' }
   ]
 }
@@ -121,14 +125,28 @@ export const Categories: CollectionConfig = {
   name: 'Category',
   slug: 'categories',
   fields: [
-    { name: 'name', type: 'text', required: true },
+    { name: 'title', type: 'text', required: true },
     { name: 'description', type: 'textarea' }
   ]
 }
 `
       fs.writeFileSync(path.join(projectPath, "src/collections/Categories.ts"), catsCollection)
-      collectionsImports += `\nimport { Posts } from './collections/Posts.js'\nimport { Categories } from './collections/Categories.js'`
-      collectionsArray += `,\n    Posts,\n    Categories`
+
+      const mediaCollection = `import type { CollectionConfig } from '@zenith-open/zenithcms-types'
+
+export const Media: CollectionConfig = {
+  name: 'Media',
+  slug: 'media',
+  fields: [
+    { name: 'alt', type: 'text', required: true },
+    { name: 'url', type: 'text', required: true }
+  ]
+}
+`
+      fs.writeFileSync(path.join(projectPath, "src/collections/Media.ts"), mediaCollection)
+
+      collectionsImports += `\nimport { Posts } from './collections/Posts.js'\nimport { Categories } from './collections/Categories.js'\nimport { Media } from './collections/Media.js'`
+      collectionsArray += `,\n    Posts,\n    Categories,\n    Media`
     }
 
     if (templateType === '3') {
@@ -138,11 +156,14 @@ export const Products: CollectionConfig = {
   name: 'Product',
   slug: 'products',
   fields: [
-    { name: 'name', type: 'text', required: true },
-    { name: 'description', type: 'textarea' },
+    { name: 'title', type: 'text', required: true },
+    { name: 'slug', type: 'text', required: true, unique: true },
+    { name: 'description', type: 'richtext' },
     { name: 'price', type: 'number', required: true },
     { name: 'inventory', type: 'number', defaultValue: 0 },
-    { name: 'status', type: 'select', options: ['active', 'archived'], defaultValue: 'active' }
+    { name: 'categories', type: 'relation', relationTo: 'categories', hasMany: true },
+    { name: 'images', type: 'relation', relationTo: 'media', hasMany: true },
+    { name: 'status', type: 'select', options: ['active', 'archived', 'draft'], defaultValue: 'draft' }
   ]
 }
 `
@@ -155,28 +176,43 @@ export const Orders: CollectionConfig = {
   slug: 'orders',
   fields: [
     { name: 'orderNumber', type: 'text', required: true },
-    { name: 'totalAmount', type: 'number', required: true },
+    { name: 'total', type: 'number', required: true },
+    { name: 'items', type: 'relation', relationTo: 'products', hasMany: true },
+    { name: 'customer', type: 'relation', relationTo: 'users' },
     { name: 'status', type: 'select', options: ['pending', 'shipped', 'delivered', 'cancelled'], defaultValue: 'pending' }
   ]
 }
 `
       fs.writeFileSync(path.join(projectPath, "src/collections/Orders.ts"), ordersCollection)
 
-      const customersCollection = `import type { CollectionConfig } from '@zenith-open/zenithcms-types'
+      const catsCollection = `import type { CollectionConfig } from '@zenith-open/zenithcms-types'
 
-export const Customers: CollectionConfig = {
-  name: 'Customer',
-  slug: 'customers',
+export const Categories: CollectionConfig = {
+  name: 'Category',
+  slug: 'categories',
   fields: [
-    { name: 'name', type: 'text', required: true },
-    { name: 'email', type: 'text', required: true },
-    { name: 'phone', type: 'text' }
+    { name: 'title', type: 'text', required: true },
+    { name: 'description', type: 'textarea' }
   ]
 }
 `
-      fs.writeFileSync(path.join(projectPath, "src/collections/Customers.ts"), customersCollection)
-      collectionsImports += `\nimport { Products } from './collections/Products.js'\nimport { Orders } from './collections/Orders.js'\nimport { Customers } from './collections/Customers.js'`
-      collectionsArray += `,\n    Products,\n    Orders,\n    Customers`
+      fs.writeFileSync(path.join(projectPath, "src/collections/Categories.ts"), catsCollection)
+
+      const mediaCollection = `import type { CollectionConfig } from '@zenith-open/zenithcms-types'
+
+export const Media: CollectionConfig = {
+  name: 'Media',
+  slug: 'media',
+  fields: [
+    { name: 'alt', type: 'text', required: true },
+    { name: 'url', type: 'text', required: true }
+  ]
+}
+`
+      fs.writeFileSync(path.join(projectPath, "src/collections/Media.ts"), mediaCollection)
+
+      collectionsImports += `\nimport { Products } from './collections/Products.js'\nimport { Orders } from './collections/Orders.js'\nimport { Categories } from './collections/Categories.js'\nimport { Media } from './collections/Media.js'`
+      collectionsArray += `,\n    Products,\n    Orders,\n    Categories,\n    Media`
     }
 
     const configTs = `import { buildConfig } from '@zenith-open/zenithcms-core'
