@@ -26,6 +26,7 @@ export { createResponse } from './api/utils'
 export { requireAuth, requireRole } from './middleware/auth'
 export { InvalidPayloadError, ServiceUnavailableError, ValidationError } from './errors'
 export { env } from './config/env'
+export { buildConfig } from './config/buildConfig'
 import './database/registry'
 
 // ── Middleware ───────────────────────────────────────────────────────────────

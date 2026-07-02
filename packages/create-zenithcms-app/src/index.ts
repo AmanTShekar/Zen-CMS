@@ -241,7 +241,7 @@ export default config
     fs.writeFileSync(path.join(projectPath, ".env"), ["PORT=3000","JWT_SECRET=z_"+rand(),"COOKIE_SECRET=z_"+rand(),"INITIAL_ADMIN_EMAIL="+adminEmail,"INITIAL_ADMIN_PASSWORD="+adminPassword,"DATABASE_URL=mongodb://localhost:27017/zenith","DATABASE_TYPE=mongodb"].join("\n"))
     
     fs.writeFileSync(path.join(projectPath, ".gitignore"), "node_modules\ndist\n.env\n*.log\n")
-    fs.writeFileSync(path.join(projectPath, "README.md"), "# "+path.basename(projectPath)+"\n\nnpm install && npm run dev\n\nAdmin: http://localhost:3000/admin\n")
+    fs.writeFileSync(path.join(projectPath, "README.md"), "# "+path.basename(projectPath)+"\n\nnpm run dev\n\nAdmin: http://localhost:3000/admin\n")
     
     clearInterval(spinner)
     process.stdout.write(`\r${chalk.green("✔")} Scaffold Zenith CMS architecture...\n\n`)
