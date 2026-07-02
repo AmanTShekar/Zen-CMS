@@ -232,8 +232,8 @@ export default config
     }
     fs.writeFileSync(path.join(projectPath, "tsconfig.json"), JSON.stringify(tsconfig, null, 2))
     
-    const rand = () => Math.random().toString(36).substring(2,14)
-    fs.writeFileSync(path.join(projectPath, ".env"), ["PORT=3000","JWT_SECRET=z_"+rand(),"COOKIE_SECRET=z_"+rand(),"INITIAL_ADMIN_EMAIL="+adminEmail,"INITIAL_ADMIN_PASSWORD="+adminPassword,"DATABASE_URL=mongodb://localhost:27017/zenith","DATABASE_TYPE=mongodb"].join("\n"))
+    const rand32 = () => require('crypto').randomBytes(24).toString('hex')
+    fs.writeFileSync(path.join(projectPath, ".env"), ["PORT=3000",`JWT_SECRET=${rand32()}`,`JWT_REFRESH_SECRET=${rand32()}`,`COOKIE_SECRET=${rand32()}`,"INITIAL_ADMIN_EMAIL="+adminEmail,"INITIAL_ADMIN_PASSWORD="+adminPassword,"DATABASE_URL=mongodb://localhost:27017/zenith","DATABASE_TYPE=mongodb"].join("\n"))
     
     fs.writeFileSync(path.join(projectPath, ".gitignore"), "node_modules\ndist\n.env\n*.log\n")
     fs.writeFileSync(path.join(projectPath, "README.md"), "# "+path.basename(projectPath)+"\n\nnpm run dev\n\nAdmin: http://localhost:3000/admin\n")
