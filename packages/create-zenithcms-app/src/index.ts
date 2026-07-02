@@ -34,8 +34,28 @@ program
     let adminPassword = "password123"
     let templateType = '1'
     if (!options.yes) {
-      const e = await question("? Admin email: "); if (e) adminEmail = e
-      const p = await question("? Admin password: "); if (p) adminPassword = p
+      while (true) {
+        const e = await question("? Admin email (must be valid email): ")
+        if (e) {
+          if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(e)) {
+            console.log(chalk.red("Invalid email format."))
+            continue
+          }
+          adminEmail = e
+        }
+        break
+      }
+      while (true) {
+        const p = await question("? Admin password (min 8 characters): ")
+        if (p) {
+          if (p.length < 8) {
+            console.log(chalk.red("Password must be at least 8 characters."))
+            continue
+          }
+          adminPassword = p
+        }
+        break
+      }
       const t = await question("? Choose template (1) Blank, (2) Blog, (3) E-Commerce [1]: ")
       if (t === '2' || t === '3') templateType = t
     }
