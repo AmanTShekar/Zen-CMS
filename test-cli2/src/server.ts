@@ -1,0 +1,1 @@
+import { buildConfig } from '@zenith-open/zenithcms-core'; console.log(typeof buildConfig);

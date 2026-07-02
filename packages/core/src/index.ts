@@ -917,11 +917,18 @@ export class ZenithEngine {
 ╔════════════════════════════════════════════════╗
 ║            🚀  Zenith CMS — Online              ║
 ╠════════════════════════════════════════════════╣
+║  Admin UI    →  http://localhost:${port}/admin
 ║  REST API    →  http://localhost:${port}/api/v1
 ║  GraphQL     →  http://localhost:${port}/graphql
 ║  Swagger     →  http://localhost:${port}/api-docs
 ║  Health      →  http://localhost:${port}/api/v1/system/health
 ╚════════════════════════════════════════════════╝`)
+        try {
+          if (process.env.NODE_ENV !== 'production') {
+            const cmd = process.platform === 'win32' ? 'start' : process.platform === 'darwin' ? 'open' : 'xdg-open';
+            require('child_process').exec(`${cmd} http://localhost:${port}/admin`);
+          }
+        } catch (e) {}
       })
 
       // Handle port-in-use errors (common with tsx watch restarts on Windows)

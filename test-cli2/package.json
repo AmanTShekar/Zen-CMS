@@ -1,0 +1,8 @@
+{
+  "name": "test",
+  "version": "1.0.0",
+  "dependencies": {
+    "@zenith-open/zenithcms-core": "^1.0.0-beta.4",
+    "tsx": "^4.19.0"
+  }
+}

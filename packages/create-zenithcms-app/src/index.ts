@@ -30,32 +30,8 @@ program
     const projectPath = path.resolve(process.cwd(), targetDir)
     if (fs.existsSync(projectPath)) { console.error("Directory exists"); process.exit(1) }
     
-    let adminEmail = "admin@example.com"
-    let adminPassword = "password123"
     let templateType = '1'
     if (!options.yes) {
-      while (true) {
-        const e = await question("? Admin email (must be valid email): ")
-        if (e) {
-          if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(e)) {
-            console.log(chalk.red("Invalid email format."))
-            continue
-          }
-          adminEmail = e
-        }
-        break
-      }
-      while (true) {
-        const p = await question("? Admin password (min 8 characters): ")
-        if (p) {
-          if (p.length < 8) {
-            console.log(chalk.red("Password must be at least 8 characters."))
-            continue
-          }
-          adminPassword = p
-        }
-        break
-      }
       const t = await question("? Choose template (1) Blank, (2) Blog, (3) E-Commerce [1]: ")
       if (t === '2' || t === '3') templateType = t
     }
@@ -68,10 +44,10 @@ program
       private: true, 
       scripts: { dev: "tsx src/server.ts", build: "tsc", start: "node dist/server.js" }, 
       dependencies: { 
-        "@zenith-open/zenithcms-core": "^1.0.0-beta.4", 
-        "@zenith-open/zenithcms-admin": "^1.0.0-beta.4", 
-        "@zenith-open/zenithcms-types": "^1.0.0-beta.4", 
-        "@zenith-open/zenithcms-db-mongodb": "^1.0.0-beta.4", 
+        "@zenith-open/zenithcms-core": "^1.0.0-beta.5", 
+        "@zenith-open/zenithcms-admin": "^1.0.0-beta.5", 
+        "@zenith-open/zenithcms-types": "^1.0.0-beta.5", 
+        "@zenith-open/zenithcms-db-mongodb": "^1.0.0-beta.5", 
         tsx: "^4.19.0", 
         typescript: "^5.4.5" 
       } 
@@ -254,7 +230,7 @@ export default config
     fs.writeFileSync(path.join(projectPath, "tsconfig.json"), JSON.stringify(tsconfig, null, 2))
     
     const rand32 = () => crypto.randomBytes(24).toString('hex')
-    fs.writeFileSync(path.join(projectPath, ".env"), ["PORT=3000",`JWT_SECRET=${rand32()}`,`JWT_REFRESH_SECRET=${rand32()}`,`COOKIE_SECRET=${rand32()}`,"INITIAL_ADMIN_EMAIL="+adminEmail,"INITIAL_ADMIN_PASSWORD="+adminPassword,"MONGODB_URI=mongodb://localhost:27017/zenith","DATABASE_TYPE=mongodb"].join("\n"))
+    fs.writeFileSync(path.join(projectPath, ".env"), ["PORT=3000",`JWT_SECRET=${rand32()}`,`JWT_REFRESH_SECRET=${rand32()}`,`COOKIE_SECRET=${rand32()}`,"MONGODB_URI=mongodb://localhost:27017/zenith","DATABASE_TYPE=mongodb"].join("\n"))
     
     fs.writeFileSync(path.join(projectPath, ".gitignore"), "node_modules\ndist\n.env\n*.log\n")
     fs.writeFileSync(path.join(projectPath, "README.md"), "# "+path.basename(projectPath)+"\n\nnpm run dev\n\nAdmin: http://localhost:3000/admin\n")

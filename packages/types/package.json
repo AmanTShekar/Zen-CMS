@@ -1,6 +1,6 @@
-﻿{
+{
   "name": "@zenith-open/zenithcms-types",
-  "version": "1.0.0-beta.4",
+  "version": "1.0.0-beta.5",
   "publishConfig": {
     "access": "public"
   },
@@ -20,6 +20,7 @@
     "README.md"
   ]
 }
+
 
 
 
