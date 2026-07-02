@@ -8,7 +8,7 @@ import dotenv from 'dotenv'
 import path from 'path'
 dotenv.config({ path: path.resolve(process.cwd(), '../../.env') })
 dotenv.config()
-import * as Sentry from '@sentry/node'
+
 import { ZenithEngine } from './index'
 import { logger } from './services/logger'
 
@@ -18,33 +18,18 @@ if (env.NODE_ENV === 'production' && !env.REDIS_URL && process.env.ALLOW_IN_MEMO
 }
 
 import './services/telemetry'
-import { nodeProfilingIntegration } from '@sentry/profiling-node'
+
 import { env } from './config/env';
-
-
-if (process.env.SENTRY_DSN) {
-  Sentry.init({
-    dsn: process.env.SENTRY_DSN,
-    environment: env.NODE_ENV || 'development',
-    integrations: [
-      nodeProfilingIntegration(),
-    ],
-    tracesSampleRate: 1.0, 
-    profilesSampleRate: 1.0,
-  })
-}
 
 // ── Global Process Error Handlers ────────────────────────────────────────────
 // These must be registered before any other code to catch every unhandled error.
 
 process.on('uncaughtException', (err) => {
-  if (process.env.SENTRY_DSN) Sentry.captureException(err)
   logger.error({ err: err.message, stack: err.stack }, 'UNCAUGHT EXCEPTION — shutting down')
   process.exit(1)
 })
 
 process.on('unhandledRejection', (reason) => {
-  if (process.env.SENTRY_DSN) Sentry.captureException(reason)
   const msg = reason instanceof Error ? reason.message : String(reason)
   const stack = reason instanceof Error ? reason.stack : undefined
   logger.error({ err: msg, stack }, 'UNHANDLED REJECTION — shutting down')

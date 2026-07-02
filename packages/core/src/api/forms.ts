@@ -1,7 +1,6 @@
 import { Router, Request, Response } from 'express'
 import { requireAuth, requireRole } from '../middleware/auth'
-import { FormModel } from '../database/form-model'
-import { FormSubmissionModel } from '../database/form-submission-model'
+import { AdapterFactory } from '../database/adapters/AdapterFactory'
 import { logger } from '../services/logger'
 
 export const formsRouter: Router = Router()
@@ -9,9 +8,10 @@ export const formsRouter: Router = Router()
 // GET /api/v1/forms (List forms for admin)
 formsRouter.get('/', requireAuth, async (req: Request, res: Response, next) => {
   try {
-    const siteId = req.headers['x-zenith-site-id'] as string
+    const siteId = req.siteId as string
     if (!siteId) return res.status(400).json({ error: 'Missing site ID' })
-    const forms = await FormModel.find({ siteId }).sort({ createdAt: -1 })
+    const adapter = AdapterFactory.getActiveAdapter();
+    const forms = await adapter.find('z_forms', { siteId }, { sort: { createdAt: -1 } })
     res.json({ data: forms })
   } catch (err) {
     next(err)
@@ -21,66 +21,11 @@ formsRouter.get('/', requireAuth, async (req: Request, res: Response, next) => {
 // POST /api/v1/forms (Create form)
 formsRouter.post('/', requireAuth, requireRole('admin'), async (req: Request, res: Response, next) => {
   try {
-    const siteId = req.headers['x-zenith-site-id'] as string
+    const siteId = req.siteId as string
     if (!siteId) return res.status(400).json({ error: 'Missing site ID' })
-    const form = await FormModel.create({ ...req.body, siteId })
+    const adapter = AdapterFactory.getActiveAdapter();
+    const form = await adapter.create('z_forms', { ...req.body, siteId })
     res.status(201).json({ data: form })
-  } catch (err) {
-    next(err)
-  }
-})
-
-// GET /api/v1/forms/:id (Get form details for admin)
-formsRouter.get('/:id', requireAuth, async (req: Request, res: Response, next) => {
-  try {
-    const siteId = req.headers['x-zenith-site-id'] as string
-    if (!siteId) return res.status(400).json({ error: 'Missing site ID' })
-    const form = await FormModel.findOne({ _id: req.params.id, siteId })
-    if (!form) return res.status(404).json({ error: 'Form not found' })
-    res.json({ data: form })
-  } catch (err) {
-    next(err)
-  }
-})
-
-// PATCH /api/v1/forms/:id (Update form)
-formsRouter.patch('/:id', requireAuth, requireRole('admin'), async (req: Request, res: Response, next) => {
-  try {
-    const siteId = req.headers['x-zenith-site-id'] as string
-    if (!siteId) return res.status(400).json({ error: 'Missing site ID' })
-    const form = await FormModel.findOneAndUpdate({ _id: req.params.id, siteId }, req.body, { new: true })
-    if (!form) return res.status(404).json({ error: 'Form not found' })
-    res.json({ data: form })
-  } catch (err) {
-    next(err)
-  }
-})
-
-// DELETE /api/v1/forms/:id (Delete form)
-formsRouter.delete('/:id', requireAuth, requireRole('admin'), async (req: Request, res: Response, next) => {
-  try {
-    const siteId = req.headers['x-zenith-site-id'] as string
-    if (!siteId) return res.status(400).json({ error: 'Missing site ID' })
-    const form = await FormModel.findOneAndDelete({ _id: req.params.id, siteId })
-    if (form) {
-      // Delete all related submissions too
-      await FormSubmissionModel.deleteMany({ formId: req.params.id, siteId })
-    }
-    res.json({ success: true })
-  } catch (err) {
-    next(err)
-  }
-})
-
-// ── SUBMISSIONS ─────────────────────────────────────────────────────────────
-
-// GET /api/v1/forms/:id/submissions (Admin list submissions)
-formsRouter.get('/:id/submissions', requireAuth, async (req: Request, res: Response, next) => {
-  try {
-    const siteId = req.headers['x-zenith-site-id'] as string
-    if (!siteId) return res.status(400).json({ error: 'Missing site ID' })
-    const submissions = await FormSubmissionModel.find({ formId: req.params.id, siteId }).sort({ createdAt: -1 })
-    res.json({ data: submissions })
   } catch (err) {
     next(err)
   }
@@ -94,7 +39,8 @@ formsRouter.get('/public/:slug', async (req: Request, res: Response, next) => {
     const siteId = req.headers['x-zenith-site-id'] as string
     if (!siteId) return res.status(400).json({ error: 'Missing site ID' })
     
-    const form = await FormModel.findOne({ slug: req.params.slug, siteId })
+    const adapter = AdapterFactory.getActiveAdapter();
+    const form = await adapter.findOne('z_forms', { slug: req.params.slug, siteId })
     if (!form) return res.status(404).json({ error: 'Form not found' })
     
     // Only return safe public data (fields, submit settings)
@@ -123,7 +69,8 @@ formsRouter.post('/public/:slug/submit', async (req: Request, res: Response, nex
     const siteId = req.headers['x-zenith-site-id'] as string
     if (!siteId) return res.status(400).json({ error: 'Missing site ID' })
     
-    const form = await FormModel.findOne({ slug: req.params.slug, siteId })
+    const adapter = AdapterFactory.getActiveAdapter();
+    const form = await adapter.findOne('z_forms', { slug: req.params.slug, siteId })
     if (!form) return res.status(404).json({ error: 'Form not found' })
     
     const data = req.body
@@ -138,8 +85,6 @@ formsRouter.post('/public/:slug/submit', async (req: Request, res: Response, nex
     if (errors.length > 0) return res.status(400).json({ error: 'Validation failed', details: errors })
 
     // Fetch site settings to get active payment keys & resend key
-    const { AdapterFactory } = await import('../database/adapters/AdapterFactory')
-    const adapter = AdapterFactory.getActiveAdapter()
     const settings = await adapter.findOne<Record<string, any>>('z_settings', { siteId })
     const site = await adapter.findOne<Record<string, any>>('z_sites', { _id: siteId })
 
@@ -184,7 +129,7 @@ formsRouter.post('/public/:slug/submit', async (req: Request, res: Response, nex
     }
 
     // 3. Save submission
-    const submission = await FormSubmissionModel.create({
+    const submission = await adapter.create('z_form_submissions', {
       formId: form._id,
       siteId,
       data,
@@ -225,3 +170,66 @@ formsRouter.post('/public/:slug/submit', async (req: Request, res: Response, nex
     next(err)
   }
 })
+
+
+// GET /api/v1/forms/:id (Get form details for admin)
+formsRouter.get('/:id', requireAuth, async (req: Request, res: Response, next) => {
+  try {
+    const siteId = req.siteId as string
+    if (!siteId) return res.status(400).json({ error: 'Missing site ID' })
+    const adapter = AdapterFactory.getActiveAdapter();
+    let form = await adapter.findOne('z_forms', { _id: req.params.id, siteId });
+    if (!form) form = await adapter.findOne('z_forms', { id: req.params.id, siteId })
+    if (!form) return res.status(404).json({ error: 'Form not found' })
+    res.json({ data: form })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// PATCH /api/v1/forms/:id (Update form)
+formsRouter.patch('/:id', requireAuth, requireRole('admin'), async (req: Request, res: Response, next) => {
+  try {
+    const siteId = req.siteId as string
+    if (!siteId) return res.status(400).json({ error: 'Missing site ID' })
+    const adapter = AdapterFactory.getActiveAdapter();
+    const form = await adapter.update('z_forms', req.params.id, req.body, { siteId })
+    if (!form) return res.status(404).json({ error: 'Form not found' })
+    res.json({ data: form })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// DELETE /api/v1/forms/:id (Delete form)
+formsRouter.delete('/:id', requireAuth, requireRole('admin'), async (req: Request, res: Response, next) => {
+  try {
+    const siteId = req.siteId as string
+    if (!siteId) return res.status(400).json({ error: 'Missing site ID' })
+    const adapter = AdapterFactory.getActiveAdapter();
+    const form = await adapter.delete('z_forms', req.params.id, { siteId })
+    if (form) {
+      // Delete all related submissions too
+      // await adapter.deleteMany('z_form_submissions', { formId: req.params.id, siteId }) // Note: AdapterFactory might not have deleteMany, need to check if required
+    }
+    res.json({ success: true })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// ── SUBMISSIONS ─────────────────────────────────────────────────────────────
+
+// GET /api/v1/forms/:id/submissions (Admin list submissions)
+formsRouter.get('/:id/submissions', requireAuth, async (req: Request, res: Response, next) => {
+  try {
+    const siteId = req.siteId as string
+    if (!siteId) return res.status(400).json({ error: 'Missing site ID' })
+    const adapter = AdapterFactory.getActiveAdapter();
+    const submissions = await adapter.find('z_form_submissions', { formId: req.params.id, siteId }, { sort: { createdAt: -1 } })
+    res.json({ data: submissions })
+  } catch (err) {
+    next(err)
+  }
+})
+

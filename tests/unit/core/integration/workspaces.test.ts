@@ -26,7 +26,9 @@ describe('Workspaces Router Integration', () => {
         email: 'workspaces-tester@test.com',
         role: 'admin',
       })
-    } catch (e) {}
+    } catch (e) {
+      console.error('USER CREATE ERROR:', e)
+    }
   })
 
   afterAll(async () => {

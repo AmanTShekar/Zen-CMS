@@ -67,7 +67,7 @@ export const algoliaSearchMatrix: ZenithPlugin = {
       ctx.hooks.on(`collection:${collection.slug}:afterCreate`, async (payload: { doc: Record<string, any> }) => {
         try {
           const doc = payload.doc
-          if (doc._status && doc._status !== 'published') return
+          if (doc._status && doc._status !== 'published') return payload
 
           const objectID = String(doc.id || doc._id)
           await client.saveObject({
@@ -82,6 +82,7 @@ export const algoliaSearchMatrix: ZenithPlugin = {
           const message = error instanceof Error ? error.message : String(error)
           ctx.logger.error('Failed to sync document on create', { err: message })
         }
+        return payload
       })
 
       ctx.hooks.on(`collection:${collection.slug}:afterUpdate`, async (payload: { doc: Record<string, any> }) => {
@@ -92,7 +93,7 @@ export const algoliaSearchMatrix: ZenithPlugin = {
           if (doc._status && doc._status !== 'published') {
             await client.deleteObject({ indexName, objectID })
             ctx.logger.debug(`Removed unpublished document ${objectID} from ${indexName}`)
-            return
+            return payload
           }
 
           await client.partialUpdateObject({
@@ -106,6 +107,7 @@ export const algoliaSearchMatrix: ZenithPlugin = {
           const message = error instanceof Error ? error.message : String(error)
           ctx.logger.error('Failed to sync document on update', { err: message })
         }
+        return payload
       })
 
       ctx.hooks.on(`collection:${collection.slug}:afterDelete`, async (payload: { id: string }) => {
@@ -116,6 +118,7 @@ export const algoliaSearchMatrix: ZenithPlugin = {
           const message = error instanceof Error ? error.message : String(error)
           ctx.logger.error('Failed to delete document', { err: message })
         }
+        return payload
       })
     })
 
@@ -124,3 +127,4 @@ export const algoliaSearchMatrix: ZenithPlugin = {
 }
 
 export default algoliaSearchMatrix
+

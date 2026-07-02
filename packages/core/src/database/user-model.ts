@@ -5,7 +5,7 @@ const schema = new mongoose.Schema({
   firstName: { type: String },
   lastName: { type: String },
   role: { type: String },
-  siteId: { type: String, required: true, index: true },
+  siteId: { type: String, required: false, index: true },
   isActive: { type: Boolean, default: true },
   lastLogin: { type: Date },
   failedLoginAttempts: { type: Number, default: 0 },

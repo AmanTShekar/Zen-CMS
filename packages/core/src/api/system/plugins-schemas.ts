@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
 import { Router, Request, Response } from 'express'
 import crypto from 'crypto'
 import os from 'os'
@@ -456,7 +454,7 @@ router.get('/counts', requireAuth, async (req: Request, res: Response, next) => 
   try {
     const config = (req as import('express').Request & { user?: Record<string, any>, zenith?: Record<string, any> }).zenith?.config
     const adapter = (req as import('express').Request & { user?: Record<string, any>, zenith?: Record<string, any> }).zenith?.adapter
-    const siteId = req.headers['x-zenith-site-id'] as string
+    const siteId = req.siteId as string
     if (!config || !adapter) return res.json(createResponse({}))
     const counts: Record<string, number> = {}
     await Promise.all(
@@ -488,7 +486,7 @@ router.get(
       const filterAction = (req.query.action as string) || ''
       const filterStatus = (req.query.status as string) || ''
       const filterCollection = (req.query.collection as string) || ''
-      const siteId = req.headers['x-zenith-site-id'] as string
+      const siteId = req.siteId as string
 
       // Build query with filters
       const query: Record<string, any> = {}
@@ -540,7 +538,7 @@ router.get(
   async (req: Request, res: Response, next) => {
     try {
       const adapter: DatabaseAdapter = (req as import('express').Request & { user?: Record<string, any>, zenith?: Record<string, any> }).zenith?.adapter || AdapterFactory.getActiveAdapter()
-      const siteId = req.headers['x-zenith-site-id'] as string
+      const siteId = req.siteId as string
       const query: Record<string, any> = {}
       if (siteId) query.siteId = siteId
 
@@ -549,33 +547,17 @@ router.get(
       let successCount = 0
       let actionCounts: Record<string, number> = {}
 
-      if (adapter.name === 'mongoose') {
-        const conn = adapter.getNativeClient<Record<string, any>>()
-        const model = conn?.models?.['AuditLog'] || conn?.model?.('AuditLog')
-        if (model) {
-          total = await model.countDocuments(query)
-          const failedQuery = { ...query, status: 'failed' }
-          failedCount = await model.countDocuments(failedQuery)
-          successCount = total - failedCount
-          const agg = await model.aggregate([
-            { $match: query },
-            { $group: { _id: '$action', count: { $sum: 1 } } },
-          ]).exec()
-          actionCounts = Object.fromEntries(agg.map((a: Record<string, any>) => [a._id, a.count]))
-        }
-      } else {
-        try {
-          const all = await adapter.find<Record<string, any>>('audit_logs', {}, { limit: 10000 })
-          total = all.length
-          failedCount = all.filter((l: Record<string, any>) => l.status === 'failed').length
-          successCount = total - failedCount
-          actionCounts = all.reduce((acc: Record<string, number>, l: Record<string, any>) => {
-            acc[l.action] = (acc[l.action] || 0) + 1
-            return acc
-          }, {})
-        } catch {
-          // stats unavailable
-        }
+            try {
+        const all = await adapter.find('audit_logs', query, { limit: 10000 })
+        total = all.length
+        failedCount = all.filter((l) => l.status === 'failed').length
+        successCount = total - failedCount
+        actionCounts = all.reduce((acc, l) => {
+          acc[l.action] = (acc[l.action] || 0) + 1
+          return acc
+        }, {})
+      } catch {
+        // stats unavailable
       }
 
       res.json(createResponse({
@@ -597,7 +579,7 @@ router.get(
   async (req: Request, res: Response, next) => {
     try {
       const adapter: DatabaseAdapter = (req as import('express').Request & { user?: Record<string, any>, zenith?: Record<string, any> }).zenith?.adapter || AdapterFactory.getActiveAdapter()
-      const siteId = req.headers['x-zenith-site-id'] as string
+      const siteId = req.siteId as string
       const { id } = req.params
       // ISOLATION FIX: scope by siteId to prevent cross-tenant audit log access
       const query: Record<string, any> = { id }
@@ -619,7 +601,7 @@ router.post(
     try {
       const adapter: DatabaseAdapter = (req as import('express').Request & { user?: Record<string, any>, zenith?: Record<string, any> }).zenith?.adapter || AdapterFactory.getActiveAdapter()
       const { before, action, status: filterStatus, siteId: filterSiteId } = req.body
-      const siteId = req.headers['x-zenith-site-id'] as string
+      const siteId = req.siteId as string
 
       const query: Record<string, any> = {}
       if (before) {
@@ -629,7 +611,7 @@ router.post(
       if (action) query.action = action
       if (filterStatus) query.status = filterStatus
       if (siteId) query.siteId = siteId
-      if (filterSiteId) query.siteId = filterSiteId
+      // Vulnerability patched: Do not allow body.siteId to override verified req.siteId
 
       const deleted = await adapter.deleteMany('audit_logs', query)
       res.json(createResponse({ deleted, message: `Purged ${deleted} audit log entries` }))

@@ -5,7 +5,7 @@ const schema = new mongoose.Schema({
   isSystem: { type: Boolean, default: false },
   permissions: { type: [mongoose.Schema.Types.Mixed], default: [] },
   hasWildcard: { type: Boolean, default: false },
-  siteId: { type: String, required: true, index: true },
+  siteId: { type: String, required: false, index: true },
 }, { strict: true, timestamps: true })
 
 schema.index({ roleName: 1, siteId: 1 }, { unique: true })

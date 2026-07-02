@@ -54,6 +54,7 @@ import preferencesRouter from './api/preferences'
 import versionsRouter from './api/versions'
 import locksRouter from './api/locks'
 import commentsRouter from './api/comments'
+import { formsRouter } from './api/forms'
 import presenceRouter from './api/presence'
 import { DeploymentService } from './services/deployment'
 import membersRouter from './api/members'
@@ -441,6 +442,7 @@ export class ZenithEngine {
     router.use('/api/v1/system/backup', backupRouter)
     router.use('/api/v1/system/introspect', introspectRouter)
     router.use('/api/v1/events', eventsRouter)
+    router.use('/api/v1/forms', formsRouter)
 
     // ── Media ────────────────────────────────────────────────────────────────
     router.use('/api/v1/upload', uploadRouter)
@@ -454,6 +456,7 @@ export class ZenithEngine {
     router.use('/api/v1/versions', versionsRouter)
     router.use('/api/v1/locks', locksRouter)
     router.use('/api/v1/comments', commentsRouter)
+    router.use('/api/v1/forms', formsRouter)
     router.use('/api/v1/presence', presenceRouter)
     router.use('/api/v1/members', membersRouter)
     router.use('/api/v1/flows', flowsRouter)
