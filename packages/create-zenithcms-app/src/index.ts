@@ -30,9 +30,12 @@ program
     
     let adminEmail = "admin@example.com"
     let adminPassword = "password123"
+    let templateType = '1'
     if (!options.yes) {
       const e = await question("? Admin email: "); if (e) adminEmail = e
       const p = await question("? Admin password: "); if (p) adminPassword = p
+      const t = await question("? Choose template (1) Blank, (2) Blog, (3) E-Commerce [1]: ")
+      if (t === '2' || t === '3') templateType = t
     }
     
     fs.mkdirSync(path.join(projectPath, "src/collections"), { recursive: true })
@@ -94,7 +97,11 @@ export const Users: CollectionConfig = {
 `
     fs.writeFileSync(path.join(projectPath, "src/collections/Users.ts"), usersCollection)
 
-    const postsCollection = `import type { CollectionConfig } from '@zenith-open/zenithcms-types'
+    let collectionsImports = `import { Users } from './collections/Users.js'`
+    let collectionsArray = `Users`
+
+    if (templateType === '2') {
+      const postsCollection = `import type { CollectionConfig } from '@zenith-open/zenithcms-types'
 
 export const Posts: CollectionConfig = {
   name: 'Post',
@@ -106,19 +113,81 @@ export const Posts: CollectionConfig = {
   ]
 }
 `
-    fs.writeFileSync(path.join(projectPath, "src/collections/Posts.ts"), postsCollection)
+      fs.writeFileSync(path.join(projectPath, "src/collections/Posts.ts"), postsCollection)
+      
+      const catsCollection = `import type { CollectionConfig } from '@zenith-open/zenithcms-types'
+
+export const Categories: CollectionConfig = {
+  name: 'Category',
+  slug: 'categories',
+  fields: [
+    { name: 'name', type: 'text', required: true },
+    { name: 'description', type: 'textarea' }
+  ]
+}
+`
+      fs.writeFileSync(path.join(projectPath, "src/collections/Categories.ts"), catsCollection)
+      collectionsImports += `\nimport { Posts } from './collections/Posts.js'\nimport { Categories } from './collections/Categories.js'`
+      collectionsArray += `,\n    Posts,\n    Categories`
+    }
+
+    if (templateType === '3') {
+      const productsCollection = `import type { CollectionConfig } from '@zenith-open/zenithcms-types'
+
+export const Products: CollectionConfig = {
+  name: 'Product',
+  slug: 'products',
+  fields: [
+    { name: 'name', type: 'text', required: true },
+    { name: 'description', type: 'textarea' },
+    { name: 'price', type: 'number', required: true },
+    { name: 'inventory', type: 'number', defaultValue: 0 },
+    { name: 'status', type: 'select', options: ['active', 'archived'], defaultValue: 'active' }
+  ]
+}
+`
+      fs.writeFileSync(path.join(projectPath, "src/collections/Products.ts"), productsCollection)
+
+      const ordersCollection = `import type { CollectionConfig } from '@zenith-open/zenithcms-types'
+
+export const Orders: CollectionConfig = {
+  name: 'Order',
+  slug: 'orders',
+  fields: [
+    { name: 'orderNumber', type: 'text', required: true },
+    { name: 'totalAmount', type: 'number', required: true },
+    { name: 'status', type: 'select', options: ['pending', 'shipped', 'delivered', 'cancelled'], defaultValue: 'pending' }
+  ]
+}
+`
+      fs.writeFileSync(path.join(projectPath, "src/collections/Orders.ts"), ordersCollection)
+
+      const customersCollection = `import type { CollectionConfig } from '@zenith-open/zenithcms-types'
+
+export const Customers: CollectionConfig = {
+  name: 'Customer',
+  slug: 'customers',
+  fields: [
+    { name: 'name', type: 'text', required: true },
+    { name: 'email', type: 'text', required: true },
+    { name: 'phone', type: 'text' }
+  ]
+}
+`
+      fs.writeFileSync(path.join(projectPath, "src/collections/Customers.ts"), customersCollection)
+      collectionsImports += `\nimport { Products } from './collections/Products.js'\nimport { Orders } from './collections/Orders.js'\nimport { Customers } from './collections/Customers.js'`
+      collectionsArray += `,\n    Products,\n    Orders,\n    Customers`
+    }
 
     const configTs = `import { buildConfig } from '@zenith-open/zenithcms-core'
-import { Users } from './collections/Users.js'
-import { Posts } from './collections/Posts.js'
+${collectionsImports}
 
 const config = buildConfig({
   admin: {
     user: 'users'
   },
   collections: [
-    Users,
-    Posts
+    ${collectionsArray}
   ]
 })
 
