@@ -18,7 +18,49 @@
     <title>Zenith CMS | Admin Dashboard</title>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <style>
+        body, html { margin: 0; padding: 0; background-color: #000; height: 100vh; overflow: hidden; }
+        .global-loader-container {
+          position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+          display: flex; flex-direction: column; align-items: center; justify-content: center;
+          background-color: #000; z-index: 9999;
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        }
+        .global-loader-orb {
+          width: 80px; height: 80px; border-radius: 50%;
+          background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0) 70%);
+          border: 1px solid rgba(255,255,255,0.05);
+          display: flex; align-items: center; justify-content: center;
+          position: relative;
+          box-shadow: 0 0 40px rgba(255,255,255,0.02);
+        }
+        .global-loader-ring {
+          position: absolute; inset: -4px; border-radius: 50%;
+          border: 1px solid transparent; border-top-color: rgba(255,255,255,0.3); border-right-color: rgba(255,255,255,0.1);
+          animation: spin 2s linear infinite;
+        }
+        .global-loader-inner {
+          width: 30px; height: 30px; border-radius: 50%;
+          background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1);
+          animation: pulse 2s ease-in-out infinite;
+        }
+        .global-loader-text {
+          margin-top: 32px; color: rgba(255,255,255,0.3); font-size: 11px;
+          letter-spacing: 0.3em; text-transform: uppercase; font-weight: 600;
+          animation: pulse 2s ease-in-out infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        @keyframes pulse { 0%, 100% { opacity: 0.3; transform: scale(0.95); } 50% { opacity: 1; transform: scale(1.05); } }
+      </style>
+      <div class="global-loader-container">
+        <div class="global-loader-orb">
+          <div class="global-loader-ring"></div>
+          <div class="global-loader-inner"></div>
+        </div>
+        <div class="global-loader-text">Initializing</div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

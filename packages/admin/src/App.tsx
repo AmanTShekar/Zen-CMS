@@ -78,22 +78,25 @@ const ApiExplorerPage = lazy(() => import('./pages/ApiExplorerPage'))
 import { pluginRegistry } from './lib/plugin-registry'
 
 const PageLoader = () => (
- <div className="min-h-screen flex flex-col items-center justify-center bg-app gap-6">
- <div className="relative flex items-center justify-center w-24 h-24">
- <div className="absolute inset-0 rounded-full border-2 border-z-border border-z-border animate-spin" />
- <Loader2 size={32} className="text-z-primary animate-spin opacity-50" strokeWidth={1} style={{ animationDuration: '3s' }} />
- <div className="absolute inset-0 blur-3xl bg-z-panel/5 animate-pulse" />
- </div>
- <p className="text-sm font-semibold text-z-primary/40 tracking-widest uppercase">
- Loading
- </p>
+ <div className="min-h-screen flex flex-col items-center justify-center bg-black gap-6">
+  <div className="relative flex items-center justify-center w-24 h-24">
+   <div className="absolute inset-0 rounded-full border border-z-border shadow-[0_0_40px_rgba(255,255,255,0.02)] bg-[radial-gradient(circle,rgba(255,255,255,0.05)_0%,rgba(255,255,255,0)_70%)]" />
+   <div className="absolute inset-[-4px] rounded-full border border-transparent border-t-white/30 border-r-white/10 animate-spin" style={{ animationDuration: '2s' }} />
+   <div className="w-8 h-8 rounded-full border border-white/10 bg-white/5 animate-pulse" style={{ animationDuration: '2s' }} />
+  </div>
+  <p className="text-[11px] font-semibold text-white/30 tracking-[0.3em] uppercase animate-pulse">
+   Loading App
+  </p>
  </div>
 )
 
 const InnerPageLoader = () => (
-  <div className="flex-1 flex flex-col items-center justify-center h-full gap-4 opacity-50">
-    <Loader2 size={28} className="text-z-secondary animate-spin" strokeWidth={1.5} />
-    <p className="text-xs font-semibold text-z-secondary uppercase tracking-wider">Loading...</p>
+  <div className="flex-1 flex flex-col items-center justify-center h-full gap-4">
+   <div className="relative flex items-center justify-center w-12 h-12">
+    <div className="absolute inset-[-2px] rounded-full border border-transparent border-t-white/20 border-r-white/5 animate-spin" style={{ animationDuration: '1.5s' }} />
+    <div className="w-4 h-4 rounded-full border border-white/10 bg-white/5 animate-pulse" />
+   </div>
+   <p className="text-[10px] font-semibold text-white/20 uppercase tracking-widest">Loading...</p>
   </div>
 )
 
@@ -119,15 +122,15 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 
  if (isLoading || (isAuthenticated && onboardingDone === null)) {
  return (
- <div className="min-h-screen flex flex-col items-center justify-center bg-app gap-6">
- <div className="relative flex items-center justify-center w-24 h-24">
- <div className="absolute inset-0 rounded-full border-2 border-z-border border-z-border animate-spin" />
- <Loader2 size={32} className="text-z-primary animate-spin opacity-50" strokeWidth={1} style={{ animationDuration: '3s' }} />
- <div className="absolute inset-0 blur-3xl bg-z-panel/5 animate-pulse"></div>
- </div>
- <p className="text-sm font-semibold text-z-primary/40 tracking-widest uppercase">
- Initializing System
- </p>
+ <div className="min-h-screen flex flex-col items-center justify-center bg-black gap-6">
+  <div className="relative flex items-center justify-center w-24 h-24">
+   <div className="absolute inset-0 rounded-full border border-z-border shadow-[0_0_40px_rgba(255,255,255,0.02)] bg-[radial-gradient(circle,rgba(255,255,255,0.05)_0%,rgba(255,255,255,0)_70%)]" />
+   <div className="absolute inset-[-4px] rounded-full border border-transparent border-t-white/30 border-r-white/10 animate-spin" style={{ animationDuration: '2s' }} />
+   <div className="w-8 h-8 rounded-full border border-white/10 bg-white/5 animate-pulse" style={{ animationDuration: '2s' }} />
+  </div>
+  <p className="text-[11px] font-semibold text-white/30 tracking-[0.3em] uppercase animate-pulse">
+   Initializing System
+  </p>
  </div>
  )
  }

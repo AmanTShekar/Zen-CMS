@@ -52,6 +52,18 @@ program
         typescript: "^5.4.5" 
       } 
     }
+
+    // Start loading animation
+    const frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+    let i = 0
+    const spinner = setInterval(() => {
+      process.stdout.write(`\r${chalk.cyan(frames[i])} Scaffold Zenith CMS architecture...`)
+      i = (i + 1) % frames.length
+    }, 80)
+
+    // Simulate a slight delay so the user can enjoy the premium loading effect
+    await new Promise(r => setTimeout(r, 1500))
+
     fs.writeFileSync(path.join(projectPath, "package.json"), JSON.stringify(pkg, null, 2))
     
     const serverTs = `import { Zenith } from '@zenith-open/zenithcms-core'
@@ -92,8 +104,15 @@ export default config
     fs.writeFileSync(path.join(projectPath, ".gitignore"), "node_modules\ndist\n.env\n*.log\n")
     fs.writeFileSync(path.join(projectPath, "README.md"), "# "+path.basename(projectPath)+"\n\npnpm install && pnpm dev\n\nAdmin: http://localhost:3000/admin\n")
     
-    console.log(chalk.green("  Done: " + targetDir))
-    console.log("  cd " + targetDir + " && pnpm install && pnpm dev")
+    clearInterval(spinner)
+    process.stdout.write(`\r${chalk.green("✔")} Scaffold Zenith CMS architecture...\n\n`)
+
+    console.log(chalk.bold.green("✨ Project created successfully in " + chalk.cyan(targetDir) + "!\n"))
+    console.log("Next steps:")
+    console.log(chalk.cyan(`  cd ${targetDir}`))
+    console.log(chalk.cyan(`  pnpm install`))
+    console.log(chalk.cyan(`  pnpm dev`))
+    console.log("")
   })
 
 program.parse()
