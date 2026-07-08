@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "@zenith-open/zenithcms-plugin-multiplayer-crdt",
   "version": "1.0.0",
   "description": "Yjs CRDT Real-time Multiplayer Plugin for Zenith CMS",
@@ -9,7 +9,7 @@
   },
   "dependencies": {
     "yjs": "^13.6.0",
-    "y-websocket": "^2.0.0"
+    "y-websocket": "^3.0.0"
   },
   "devDependencies": {
     "@types/react": "^19.2.14",
