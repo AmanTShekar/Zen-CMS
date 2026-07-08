@@ -8,7 +8,7 @@
     "build": "tsc"
   },
   "dependencies": {
-    "algoliasearch": "5.55.1"
+    "algoliasearch": "5.55.2"
   },
   "devDependencies": {
     "typescript": "^5.4.5"
